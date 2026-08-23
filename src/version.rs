@@ -1,6 +1,6 @@
 //! Version module
 
-use libsigrok_sys::sigrok;
+use libsigrok_sys::sigrok as sr;
 use std::fmt;
 
 /// Version information, in the format of <major>.<minor>.<patch>
@@ -15,7 +15,7 @@ pub struct Version {
 }
 
 impl fmt::Display for Version {
-     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "v{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
@@ -23,9 +23,9 @@ impl fmt::Display for Version {
 /// Returns libsigrok library version
 pub fn get_sr_lib_version() -> Version {
     Version {
-        major: unsafe {sigrok::sr_lib_version_current_get() as u32},
-        minor: unsafe {sigrok::sr_lib_version_revision_get() as u32},
-        patch: unsafe {sigrok::sr_lib_version_age_get() as u32},
+        major: unsafe { sr::sr_lib_version_current_get() as u32 },
+        minor: unsafe { sr::sr_lib_version_revision_get() as u32 },
+        patch: unsafe { sr::sr_lib_version_age_get() as u32 },
     }
 }
 
@@ -33,9 +33,8 @@ pub fn get_sr_lib_version() -> Version {
 /// downloaded from the package manager.
 pub fn get_sr_package_version() -> Version {
     Version {
-        major: unsafe {sigrok::sr_package_version_major_get() as u32},
-        minor: unsafe {sigrok::sr_package_version_minor_get() as u32},
-        patch: unsafe {sigrok::sr_package_version_micro_get() as u32},
+        major: unsafe { sr::sr_package_version_major_get() as u32 },
+        minor: unsafe { sr::sr_package_version_minor_get() as u32 },
+        patch: unsafe { sr::sr_package_version_micro_get() as u32 },
     }
 }
-
