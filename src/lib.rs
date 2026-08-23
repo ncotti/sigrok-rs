@@ -31,6 +31,9 @@ pub struct Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
+        unsafe { sr::sr_session_stop(self.session) };
+        unsafe { sr::sr_dev_close(self.device.get_pointer()) };
+        unsafe { sr::sr_session_dev_remove_all(self.session) };
         unsafe { sr::sr_session_destroy(self.session) };
         unsafe { sr::sr_exit(self.context) };
     }
@@ -52,6 +55,13 @@ impl TryFrom<&str> for Session {
         }
 
         session.device = device.unwrap();
+
+        sr_try!(sr::sr_dev_open(session.device.get_pointer()));
+        sr_try!(sr::sr_session_dev_add(
+            session.session,
+            session.device.get_pointer()
+        ));
+
         Ok(session)
     }
 }
@@ -62,7 +72,7 @@ impl Session {
     /// The returned Session object does not have any device attached yet, so
     /// its device pointer is NULL. Therefore, it is the caller's
     /// responsibility to scan for devices an attach one.
-    pub fn new() -> Result<Self, SrError> {
+    fn new() -> Result<Self, SrError> {
         sr_try!(sr::sr_log_callback_set_default());
 
         let mut context: *mut sr_context = null_mut();
@@ -115,10 +125,10 @@ impl Session {
         // For each driver, scan if there are any devices connected
         let mut devices: Vec<Device> = Vec::new();
         for driver in self.driver_list() {
-            sr_try!(sr::sr_driver_init(self.context, driver.get_driver()));
+            sr_try!(sr::sr_driver_init(self.context, driver.get_pointer()));
 
             let device_list: *mut GSList =
-                unsafe { sr::sr_driver_scan(driver.get_driver(), 0x00 as *mut GSList) };
+                unsafe { sr::sr_driver_scan(driver.get_pointer(), 0x00 as *mut GSList) };
             let mut device_node: *mut GSList = device_list;
 
             while device_node != null_mut() {

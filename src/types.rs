@@ -71,3 +71,22 @@ impl TryFrom<i32> for SrError {
         }
     }
 }
+
+/// Channel types
+#[derive(Debug, Clone, Copy)]
+pub enum ChannelType {
+    /// Digital channel, a.k.a "logic" channel.
+    Digital = 10000,
+    /// Analog channel.
+    Analog = 10001,
+}
+
+impl From<i32> for ChannelType {
+    fn from(value: i32) -> Self {
+        match value {
+            10000 => ChannelType::Digital,
+            10001 => ChannelType::Analog,
+            _ => ChannelType::Digital,
+        }
+    }
+}

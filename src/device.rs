@@ -2,12 +2,15 @@
 
 use libsigrok_sys::sigrok::sr_dev_driver;
 use libsigrok_sys::sigrok::sr_dev_inst;
-use std::fmt;
 
 use std::ffi::CStr;
 use std::ptr::null_mut;
 
 use libsigrok_sys::sigrok as sr;
+use libsigrok_sys::sigrok::GSList;
+use libsigrok_sys::sigrok::sr_channel;
+
+use crate::types::ChannelType;
 
 /// This struct represents any device recognizable by libsigrok.
 #[derive(Debug, Default)]
@@ -26,6 +29,8 @@ pub struct Device {
     serial_number: String,
     /// Connection ID, if any, or "".
     connection_id: String,
+    /// Device's channels.
+    channels: Vec<Channel>,
 }
 
 impl Device {
@@ -87,6 +92,7 @@ impl Device {
             version: version,
             serial_number: serial_number,
             connection_id: connection_id,
+            channels: Channel::get_channels(p_device),
         }
     }
 
@@ -126,7 +132,7 @@ impl Device {
     }
 
     /// Returns the pointer to the device structure.
-    pub fn get_device(&self) -> *mut sr_dev_inst {
+    pub fn get_pointer(&self) -> *mut sr_dev_inst {
         self.p_device
     }
 
@@ -156,7 +162,7 @@ impl Device {
 /// Before being able to connect to any device, a driver structure must
 /// be created and used to search for the device. The idea is that only a
 /// matching pair of (driver, device) can communicate with each other.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Driver {
     /// Raw C pinter to the device driver.
     p_driver: *mut sr_dev_driver,
@@ -164,15 +170,6 @@ pub struct Driver {
     name: String,
     /// Driver's long name.
     long_name: String,
-}
-
-impl fmt::Debug for Driver {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Driver")
-            .field("name", &self.name)
-            .field("longname", &self.long_name)
-            .finish()
-    }
 }
 
 impl Driver {
@@ -207,7 +204,63 @@ impl Driver {
     }
 
     /// Returns the value of the FFI device pointer.
-    pub fn get_driver(&self) -> *mut sr_dev_driver {
+    pub fn get_pointer(&self) -> *mut sr_dev_driver {
         self.p_driver
+    }
+}
+
+/// A Channel represents a reading stream.
+#[derive(Debug)]
+pub struct Channel {
+    /// Raw FFI C pointer to the channel struct
+    p_channel: *mut sr_channel,
+    /// Name of the channel. E.g. "D0", "D1", "A0", etc.
+    name: String,
+    /// Whether the channel is enabled, i.e., will read data when the session
+    /// starts, or not.
+    enabled: bool,
+    /// Index of the channel. This value is used to reference it if needed.
+    index: i32,
+    /// Channel type, either digital or analog.
+    channel_type: ChannelType,
+}
+
+impl Channel {
+    /// Creates a new Channel struct from a raw FFI C `sr_channel` pointer.
+    ///
+    /// This function will panic! if `p_channel` is NULL.
+    pub fn new(p_channel: *mut sr_channel) -> Self {
+        if p_channel == null_mut() {
+            panic!("Channel::new(), p_channel was NULL");
+        }
+        let channel: sr_channel = unsafe { *p_channel };
+        Self {
+            p_channel: p_channel,
+            name: unsafe { CStr::from_ptr(channel.name) }
+                .to_string_lossy()
+                .to_string(),
+            enabled: channel.enabled != 0,
+            index: channel.index,
+            channel_type: ChannelType::from(channel.type_),
+        }
+    }
+
+    /// Returns a vector holding all the listed channels for the given device.
+    pub fn get_channels(p_device: *const sr_dev_inst) -> Vec<Self> {
+        let mut channels: Vec<Channel> = Vec::new();
+
+        let channel_list: *mut GSList = unsafe { sr::sr_dev_inst_channels_get(p_device) };
+        let mut channel_node: *mut GSList = channel_list;
+
+        while channel_node != null_mut() {
+            let p_channel: *mut sr_channel = unsafe { *channel_node }.data.cast();
+
+            channels.push(Channel::new(p_channel));
+            channel_node = unsafe { *channel_node }.next;
+        }
+
+        unsafe { glib::ffi::g_slist_free(channel_list.cast()) };
+
+        channels
     }
 }
