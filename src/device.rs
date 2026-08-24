@@ -79,9 +79,12 @@ impl Device {
         let connection_id: String = if connection_id == null_mut() {
             String::new()
         } else {
-            unsafe { CStr::from_ptr(connection_id) }
+            let out: String = unsafe { CStr::from_ptr(connection_id) }
                 .to_string_lossy()
-                .to_string()
+                .to_string().clone();
+
+            unsafe{glib::ffi::g_free(connection_id.cast_mut().cast())};
+            out
         };
 
         Device {
