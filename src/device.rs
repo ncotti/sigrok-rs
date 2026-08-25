@@ -139,6 +139,16 @@ impl Device {
         self.p_device
     }
 
+    /// Returns the device's channel whose index matches the argument.
+    pub fn get_channel_by_index(&self, index: i32) -> Option<&Channel> {
+        self.channels.iter().find(|channel| channel.index == index)
+    }
+
+    /// Returns the device's channel whose name matches the argument.
+    pub fn get_channel_by_name(&self, name: String) -> Option<&Channel> {
+        self.channels.iter().find(|channel| channel.name == name)
+    }
+
     /// Compares the given value with the device's vendor, model, version,
     /// serial number and connection ID, and also its driver name.
     ///
@@ -265,5 +275,20 @@ impl Channel {
         unsafe { glib::ffi::g_slist_free(channel_list.cast()) };
 
         channels
+    }
+
+    /// Returns the raw FFI C pointer to the channel struct.
+    pub fn get_pointer(&self) -> *mut sr_channel {
+        self.p_channel
+    }
+
+    /// Returns the name of the channel
+    pub fn get_name(&self) -> &String {
+        &self.name
+    }
+
+    /// Returns the index of the channel
+    pub fn get_index(&self) -> i32 {
+        self.index
     }
 }

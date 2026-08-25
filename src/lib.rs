@@ -5,8 +5,10 @@
 pub mod device;
 pub mod types;
 pub mod version;
+pub mod trigger;
 
 use crate::device::{Device, Driver};
+use crate::trigger::{Trigger, TriggerEvent};
 use crate::types::{LogLevel, SrError};
 
 use std::ptr::null_mut;
@@ -35,6 +37,7 @@ impl Drop for Session {
         unsafe { sr::sr_dev_close(self.device.get_pointer()) };
         unsafe { sr::sr_session_dev_remove_all(self.session) };
         unsafe { sr::sr_session_destroy(self.session) };
+        // TODO, this line generates a Segmentation Fault
         unsafe { sr::sr_exit(self.context) };
     }
 }
@@ -142,6 +145,12 @@ impl Session {
         }
 
         Ok(devices)
+    }
+
+    pub fn set_trigger(&self, event: TriggerEvent) -> Result<(), SrError> {
+        let trigger = Trigger::new(String::from("name"), self.device.get_channel_by_index(0).unwrap(), event)?;
+        sr_try!(sr::sr_session_trigger_set(self.session, trigger.get_pointer()));
+        Ok(())
     }
 }
 
