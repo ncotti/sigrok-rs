@@ -10,7 +10,9 @@ use libsigrok_sys::sigrok as sr;
 use libsigrok_sys::sigrok::GSList;
 use libsigrok_sys::sigrok::sr_channel;
 
+use crate::sr_try;
 use crate::types::ChannelType;
+use crate::types::SrError;
 
 /// This struct represents any device recognizable by libsigrok.
 #[derive(Debug, Default)]
@@ -83,7 +85,7 @@ impl Device {
                 .to_string_lossy()
                 .to_string().clone();
 
-            unsafe{glib::ffi::g_free(connection_id.cast_mut().cast())};
+            //unsafe{glib::ffi::g_free(connection_id.cast_mut().cast())};
             out
         };
 
@@ -97,6 +99,11 @@ impl Device {
             connection_id: connection_id,
             channels: Channel::get_channels(p_device),
         }
+    }
+
+    pub fn open(&self) -> Result<(), SrError> {
+        sr_try!(sr::sr_dev_open(self.p_device));
+        Ok(())
     }
 
     /// Returns the vendor string.
@@ -272,7 +279,7 @@ impl Channel {
             channel_node = unsafe { *channel_node }.next;
         }
 
-        unsafe { glib::ffi::g_slist_free(channel_list.cast()) };
+        // unsafe { glib::ffi::g_slist_free(channel_list.cast()) };
 
         channels
     }

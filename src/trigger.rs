@@ -21,6 +21,7 @@ use crate::types::SrError;
 ///
 /// A **match** is the actual event, e.g., an electrical signal having a
 /// rising edge or a low or high value.
+#[derive(Debug, Clone)]
 pub struct Trigger {
     /// Raw FFI C pointer to the `sr_trigger` struct.
     p_trigger: *mut sr_trigger,
@@ -59,7 +60,7 @@ impl Trigger {
 
 impl Drop for Trigger {
     fn drop(&mut self) {
-        unsafe{sr::sr_trigger_free(self.p_trigger)};
+        //unsafe{sr::sr_trigger_free(self.p_trigger)};
     }
 }
 
@@ -67,6 +68,7 @@ impl Drop for Trigger {
 ///
 /// For a trigger to actually be triggered, all the stages must be fulfilled
 /// in order.
+#[derive(Debug, Clone)]
 pub struct TriggerStage {
     /// Raw FFI C pointer.
     p_stage: *mut sr_trigger_stage,
@@ -105,6 +107,7 @@ impl TriggerStage {
 ///
 /// Holds the channel and the event that will cause the trigger's stage to be
 /// completed.
+#[derive(Debug, Clone)]
 pub struct TriggerMatch {
     /// Channel index where the event will be overseen.
     channel_index: i32,
