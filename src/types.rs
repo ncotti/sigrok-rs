@@ -47,6 +47,8 @@ pub enum SrError {
     // From here on, these are custom error codes
     #[error("Device not found")]
     SrDeviceNotFound = -12,
+    #[error("Pointer was NULL")]
+    SrNull = -13,
 }
 
 impl TryFrom<i32> for SrError {

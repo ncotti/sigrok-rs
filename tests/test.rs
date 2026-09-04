@@ -1,6 +1,4 @@
-
 // use sigrok_rs::LogicAnalyzer;
-
 
 // // This test should open a logic analyzer device, read data from its channels,
 // // and then exit.

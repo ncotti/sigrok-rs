@@ -3,13 +3,15 @@
 #![warn(missing_docs)]
 
 pub mod device;
+pub mod driver;
+pub mod input_module;
+pub mod output_module;
+pub mod trigger;
 pub mod types;
 pub mod version;
-pub mod trigger;
-pub mod output_module;
-pub mod input_module;
 
-use crate::device::{Device, Driver};
+use crate::device::Device;
+use crate::driver::Driver;
 use crate::input_module::InputModule;
 use crate::output_module::OutputModule;
 use crate::trigger::{Trigger, TriggerEvent};
@@ -20,12 +22,12 @@ use std::ptr::{null, null_mut};
 use std::thread::{sleep, sleep_ms};
 use std::time::Duration;
 
-use libsigrok_sys::sigrok::{self as sr, sr_datafeed_packet};
 use libsigrok_sys::sigrok::GSList;
 use libsigrok_sys::sigrok::sr_context;
 use libsigrok_sys::sigrok::sr_dev_driver;
 use libsigrok_sys::sigrok::sr_dev_inst;
 use libsigrok_sys::sigrok::sr_session;
+use libsigrok_sys::sigrok::{self as sr, sr_datafeed_packet};
 use std::mem;
 pub use version::*;
 
@@ -54,19 +56,19 @@ pub enum PacketType {
 impl TryFrom<u16> for PacketType {
     type Error = SrError;
 
-     fn try_from(value: u16) -> Result<Self, SrError> {
-         match value {
-            10000 => {Ok(PacketType::Header)},
-            10001 => {Ok(PacketType::End)},
-            10002 => {Ok(PacketType::Meta)},
-            10003 => {Ok(PacketType::Trigger)},
-            10004 => {Ok(PacketType::Logic)},
-            10005 => {Ok(PacketType::FrameBegin)},
-            10006 => {Ok(PacketType::FrameEnd)},
-            10007 => {Ok(PacketType::Analog)},
-            _ => {Err(SrError::SrErrNA)},
+    fn try_from(value: u16) -> Result<Self, SrError> {
+        match value {
+            10000 => Ok(PacketType::Header),
+            10001 => Ok(PacketType::End),
+            10002 => Ok(PacketType::Meta),
+            10003 => Ok(PacketType::Trigger),
+            10004 => Ok(PacketType::Logic),
+            10005 => Ok(PacketType::FrameBegin),
+            10006 => Ok(PacketType::FrameEnd),
+            10007 => Ok(PacketType::Analog),
+            _ => Err(SrError::SrErrNA),
         }
-     }
+    }
 }
 
 pub struct HeaderPacket {
@@ -77,27 +79,25 @@ pub struct HeaderPacket {
 impl From<*const c_void> for HeaderPacket {
     fn from(payload: *const c_void) -> Self {
         let p_feed_version: *const u32 = payload.cast();
-        let feed_version: u32 = unsafe{p_feed_version.read()};
+        let feed_version: u32 = unsafe { p_feed_version.read() };
 
-        let p_time_seconds: *const u32 = unsafe{payload.byte_offset(4).cast()};
-        let time_seconds: u64 = unsafe{p_time_seconds.read()} as u64;
+        let p_time_seconds: *const u32 = unsafe { payload.byte_offset(4).cast() };
+        let time_seconds: u64 = unsafe { p_time_seconds.read() } as u64;
 
-        let p_time_us: *const u32 = unsafe{payload.byte_offset(8).cast()};
-        let time_us: u64 = unsafe{p_time_us.read()} as u64;
+        let p_time_us: *const u32 = unsafe { payload.byte_offset(8).cast() };
+        let time_us: u64 = unsafe { p_time_us.read() } as u64;
 
         dbg!(feed_version);
         dbg!(time_seconds);
         dbg!(time_us);
-        HeaderPacket{
+        HeaderPacket {
             feed_version: feed_version,
-            time: Duration::from_micros(time_us + time_seconds*1_000_000)
+            time: Duration::from_micros(time_us + time_seconds * 1_000_000),
         }
     }
 }
 
-pub struct MetaPacket {
-
-}
+pub struct MetaPacket {}
 
 /// Given "N" logic channels, where `1 <= N <= 16`, the `data` vector holds in
 /// each bit the logical state of each channel, ordered by channel index,
@@ -109,7 +109,7 @@ pub struct MetaPacket {
 // 0xF6          1   1   1   1   0   1   1   0
 // 0xD2          1   1   0   1   0   0   1   0
 pub struct LogicPacket {
-    data: Vec<u16>
+    data: Vec<u16>,
 }
 
 impl From<*const c_void> for LogicPacket {
@@ -123,18 +123,14 @@ impl From<*const c_void> for LogicPacket {
         // let p_p_data: *const *const u8 = unsafe{payload.byte_offset(10).cast()};
         // dbg!(p_p_data);
         // let mut p_data: *const u8 = unsafe{*p_p_data};
-        
 
-        let logic = unsafe {
-            &*(payload as *const sr::sr_datafeed_logic)
-        };
+        let logic = unsafe { &*(payload as *const sr::sr_datafeed_logic) };
 
         let length = logic.length;
         let unit_size = logic.unitsize;
         let mut p_data = logic.data as *const u8;
 
         let mut data: Vec<u16> = Vec::new();
-
 
         if unit_size != 1 && unit_size != 2 {
             // TODO
@@ -143,12 +139,13 @@ impl From<*const c_void> for LogicPacket {
 
         for _i in 0..length {
             let channel_values: u16 = if unit_size == 1 {
-                (unsafe{p_data.read()} as u16)
+                (unsafe { p_data.read() } as u16)
             } else {
-                ((unsafe{p_data.offset(1).read()} as u16) << 8) | (unsafe{p_data.read()} as u16)
+                ((unsafe { p_data.offset(1).read() } as u16) << 8)
+                    | (unsafe { p_data.read() } as u16)
             };
             data.push(channel_values);
-            p_data = unsafe {p_data.byte_offset(unit_size as isize)};
+            p_data = unsafe { p_data.byte_offset(unit_size as isize) };
         }
 
         dbg!(length);
@@ -157,15 +154,11 @@ impl From<*const c_void> for LogicPacket {
         dbg!(data[1]);
         dbg!(data[2]);
 
-        LogicPacket {
-            data: data,
-        }
+        LogicPacket { data: data }
     }
 }
 
-pub struct AnalogPacket {
-
-}
+pub struct AnalogPacket {}
 
 /// Logic analyzer session.
 pub struct Session {
@@ -244,27 +237,6 @@ impl Session {
         Ok(())
     }
 
-    /// Returns the list of available drivers for all devices that could be
-    /// recognized.
-    fn driver_list(&self) -> Vec<Driver> {
-        let mut drivers: Vec<Driver> = Vec::new();
-
-        let mut p_p_drivers: *mut *mut sr_dev_driver = unsafe { sr::sr_driver_list(self.context) };
-        let mut p_driver: *mut sr_dev_driver = unsafe { *p_p_drivers };
-
-        while p_driver != null_mut() {
-            drivers.push(Driver::new(p_driver));
-
-            // Point to the next driver by moving the numerical value of the
-            // memory address
-            p_p_drivers = ((p_p_drivers as usize) + mem::size_of::<*mut sr_dev_driver>())
-                as *mut *mut sr_dev_driver;
-            p_driver = unsafe { *p_p_drivers };
-        }
-
-        drivers
-    }
-
     /// Returns a list of all discovered devices currently plugged to the PC.
     ///
     /// The device "demo" is always discovered, so the returned vector will
@@ -272,7 +244,7 @@ impl Session {
     pub fn scan(&mut self) -> Result<Vec<Device>, SrError> {
         // For each driver, scan if there are any devices connected
         let mut devices: Vec<Device> = Vec::new();
-        for driver in self.driver_list() {
+        for driver in Driver::list(self.context)? {
             sr_try!(sr::sr_driver_init(self.context, driver.get_pointer()));
 
             let device_list: *mut GSList =
@@ -293,22 +265,33 @@ impl Session {
     }
 
     pub fn set_trigger(&self, event: TriggerEvent) -> Result<(), SrError> {
-        let trigger: Trigger = Trigger::new(String::from("name"), self.device.get_channel_by_index(0).unwrap(), event)?;
-        sr_try!(sr::sr_session_trigger_set(self.session, trigger.get_pointer()));
+        let trigger: Trigger = Trigger::new(
+            String::from("name"),
+            self.device.get_channel_by_index(0).unwrap(),
+            event,
+        )?;
+        sr_try!(sr::sr_session_trigger_set(
+            self.session,
+            trigger.get_pointer()
+        ));
         Ok(())
     }
 
     /// Runs until the trigger or "ms" have passed
     /// Blocking
     pub fn run(&self, timeout_ms: u64) -> Result<(), SrError> {
-        sr_try!(sr::sr_session_datafeed_callback_add(self.session, Some(Session::my_callback), null_mut()));
+        sr_try!(sr::sr_session_datafeed_callback_add(
+            self.session,
+            Some(Session::my_callback),
+            null_mut()
+        ));
         self.device.open().unwrap_or_else(|e| {});
         sr_try!(sr::sr_session_start(self.session));
         unsafe {
             let main_loop = glib::ffi::g_main_loop_new(0x0 as *mut _, 0);
             glib::ffi::g_main_loop_run(main_loop);
         };
-        unsafe{assert!(sr::sr_session_is_running(self.session) == 1)}
+        unsafe { assert!(sr::sr_session_is_running(self.session) == 1) }
         sr_try!(sr::sr_session_stop(self.session));
         Ok(())
     }
@@ -319,25 +302,25 @@ impl Session {
         cb_data: *mut std::ffi::c_void,
     ) {
         if packet == null() {
-            return
+            return;
         }
-        
-        let packet = unsafe{*packet};
+
+        let packet = unsafe { *packet };
         let packet_type = PacketType::try_from(packet.type_).unwrap();
 
         match packet_type {
             PacketType::Header => {
                 let p = HeaderPacket::from(packet.payload);
-            },
-            PacketType::End => {},
-            PacketType::Meta => {},
-            PacketType::Trigger => {},
+            }
+            PacketType::End => {}
+            PacketType::Meta => {}
+            PacketType::Trigger => {}
             PacketType::Logic => {
                 let p = LogicPacket::from(packet.payload);
-            },
-            PacketType::FrameBegin => {},
-            PacketType::FrameEnd => {},
-            PacketType::Analog => {},
+            }
+            PacketType::FrameBegin => {}
+            PacketType::FrameEnd => {}
+            PacketType::Analog => {}
         };
     }
 }

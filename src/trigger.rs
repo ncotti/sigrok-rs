@@ -6,7 +6,7 @@ use libsigrok_sys::sigrok::{sr_trigger, sr_trigger_stage};
 
 use libsigrok_sys::sigrok as sr;
 
-use crate::device::{Channel};
+use crate::device::Channel;
 use crate::sr_try;
 use crate::types::SrError;
 
@@ -34,7 +34,8 @@ pub struct Trigger {
 impl Trigger {
     /// Creates a new trigger with a single stage and a single match event.
     pub fn new(name: String, channel: &Channel, event: TriggerEvent) -> Result<Self, SrError> {
-        let p_trigger: *mut sr_trigger = unsafe{sr::sr_trigger_new(name.as_ptr().cast_mut().cast())};
+        let p_trigger: *mut sr_trigger =
+            unsafe { sr::sr_trigger_new(name.as_ptr().cast_mut().cast()) };
 
         let stages: Vec<TriggerStage> = vec![TriggerStage::new(p_trigger, channel, event)?];
 
@@ -79,25 +80,29 @@ pub struct TriggerStage {
 
     /// List of matches associated with this stage. If any of these events
     /// occurs, then the stage is considered fulfilled.
-    matches: Vec<TriggerMatch>
+    matches: Vec<TriggerMatch>,
 }
 
 impl TriggerStage {
     /// Create a new stage for the given trigger.
     ///
     /// This function will panic if `p_trigger` is null
-    pub fn new(p_trigger: *mut sr_trigger, channel: &Channel, event: TriggerEvent) -> Result<Self, SrError> {
+    pub fn new(
+        p_trigger: *mut sr_trigger,
+        channel: &Channel,
+        event: TriggerEvent,
+    ) -> Result<Self, SrError> {
         if p_trigger == null_mut() {
             panic!("TriggerStage::new(), received trigger was NULL.");
         }
 
-        let p_stage: *mut sr_trigger_stage = unsafe{sr::sr_trigger_stage_add(p_trigger)};
+        let p_stage: *mut sr_trigger_stage = unsafe { sr::sr_trigger_stage_add(p_trigger) };
 
         let matches: Vec<TriggerMatch> = vec![TriggerMatch::new(p_stage, channel, event)?];
 
         Ok(Self {
             p_stage: p_stage,
-            order: unsafe{(*p_stage).stage},
+            order: unsafe { (*p_stage).stage },
             matches: matches,
         })
     }
@@ -113,7 +118,7 @@ pub struct TriggerMatch {
     channel_index: i32,
 
     /// Event that will cause a "match".
-    event: TriggerEvent
+    event: TriggerEvent,
 }
 
 impl TriggerMatch {
@@ -121,13 +126,22 @@ impl TriggerMatch {
     ///
     /// A *match* is associated to a trigger's stage, and is defined by an
     /// event that must occur on one of the device's channels.
-    pub fn new(p_stage: *mut sr_trigger_stage, channel: &Channel, event: TriggerEvent) -> Result<Self, SrError> {
+    pub fn new(
+        p_stage: *mut sr_trigger_stage,
+        channel: &Channel,
+        event: TriggerEvent,
+    ) -> Result<Self, SrError> {
         let value: f32 = match event {
-            TriggerEvent::Over(f) | TriggerEvent::Under(f) => {f},
-            _ => {0.0},
+            TriggerEvent::Over(f) | TriggerEvent::Under(f) => f,
+            _ => 0.0,
         };
 
-        sr_try!(sr::sr_trigger_match_add(p_stage, channel.get_pointer(), event.into(), value));
+        sr_try!(sr::sr_trigger_match_add(
+            p_stage,
+            channel.get_pointer(),
+            event.into(),
+            value
+        ));
 
         Ok(TriggerMatch {
             channel_index: channel.get_index(),
@@ -135,8 +149,6 @@ impl TriggerMatch {
         })
     }
 }
-
-
 
 /// Possible events that may activate a trigger.
 #[repr(i32)]

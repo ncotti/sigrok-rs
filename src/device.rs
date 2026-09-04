@@ -1,12 +1,13 @@
 //! Device representation
 
-use libsigrok_sys::sigrok::sr_dev_driver;
+use libsigrok_sys::sigrok as sr;
+
+use crate::driver::Driver;
 use libsigrok_sys::sigrok::sr_dev_inst;
 
 use std::ffi::CStr;
 use std::ptr::null_mut;
 
-use libsigrok_sys::sigrok as sr;
 use libsigrok_sys::sigrok::GSList;
 use libsigrok_sys::sigrok::sr_channel;
 
@@ -14,24 +15,29 @@ use crate::sr_try;
 use crate::types::ChannelType;
 use crate::types::SrError;
 
-/// This struct represents any device recognizable by libsigrok.
+/// A device can be though as any  lab instrument which is capable of
+/// measuring something. E.g.: Logic analyzers, oscilloscopes, multimeters,
+/// thermometers, etc.
+///
+/// A device has a driver to communicate with it, and possesses `channels`
+/// from where the data is read.
 #[derive(Debug, Default)]
 pub struct Device {
     /// Driver used to communicate with the device.
     driver: Driver,
-    /// Raw C FFI pointer to the device instance.
+    /// Raw C FFI pointer to the device's instance.
     p_device: *mut sr_dev_inst,
-    /// Vendor string, if any, or "".
+    /// Vendor string, may be empty.
     vendor: String,
-    /// Model string, if any, or "".
+    /// Model string, may be empty
     model: String,
-    /// Version string, if any, or "".
+    /// Version string, may be empty.
     version: String,
-    /// Serial number, if any, or "".
+    /// Serial number, may be empty.
     serial_number: String,
-    /// Connection ID, if any, or "".
+    /// Connection ID, may be empty.
     connection_id: String,
-    /// Device's channels.
+    /// Device's channels, from where data will be read.
     channels: Vec<Channel>,
 }
 
@@ -83,7 +89,8 @@ impl Device {
         } else {
             let out: String = unsafe { CStr::from_ptr(connection_id) }
                 .to_string_lossy()
-                .to_string().clone();
+                .to_string()
+                .clone();
 
             //unsafe{glib::ffi::g_free(connection_id.cast_mut().cast())};
             out
@@ -107,36 +114,26 @@ impl Device {
     }
 
     /// Returns the vendor string.
-    ///
-    /// If it could be detected, it returns an empty string "".
     pub fn get_vendor(&self) -> &String {
         &self.vendor
     }
 
     /// Returns the model string.
-    ///
-    /// If it could be detected, it returns an empty string "".
     pub fn get_model(&self) -> &String {
         &self.model
     }
 
     /// Returns the version string.
-    ///
-    /// If it could be detected, it returns an empty string "".
     pub fn get_version(&self) -> &String {
         &self.version
     }
 
     /// Returns the serial string.
-    ///
-    /// If it could be detected, it returns an empty string "".
     pub fn get_serial_number(&self) -> &String {
         &self.serial_number
     }
 
     /// Returns the connection ID string.
-    ///
-    /// If it could be detected, it returns an empty string "".
     pub fn get_connection_id(&self) -> &String {
         &self.connection_id
     }
@@ -172,60 +169,8 @@ impl Device {
             || (value == self.version)
             || (value == self.serial_number)
             || (value == self.connection_id)
-            || (value == self.driver.name)
-            || (value == self.driver.long_name)
-    }
-}
-
-/// Sigrok's drivers for different types of devices.
-///
-/// Before being able to connect to any device, a driver structure must
-/// be created and used to search for the device. The idea is that only a
-/// matching pair of (driver, device) can communicate with each other.
-#[derive(Clone, Default, Debug)]
-pub struct Driver {
-    /// Raw C pinter to the device driver.
-    p_driver: *mut sr_dev_driver,
-    /// Driver's name.
-    name: String,
-    /// Driver's long name.
-    long_name: String,
-}
-
-impl Driver {
-    /// Creates a new Driver struct from a FFI C `sr_dev_driver` pointer.
-    ///
-    /// This function will panic! if the argument, `p_driver`, is NULL.
-    pub fn new(p_driver: *mut sr_dev_driver) -> Self {
-        if p_driver == null_mut() {
-            panic!("Driver::new(), p_driver argument is a NULL pointer.");
-        }
-
-        let driver: sr_dev_driver = unsafe { *p_driver };
-        Self {
-            p_driver: p_driver,
-            name: unsafe { CStr::from_ptr(driver.name) }
-                .to_string_lossy()
-                .to_string(),
-            long_name: unsafe { CStr::from_ptr(driver.longname) }
-                .to_string_lossy()
-                .to_string(),
-        }
-    }
-
-    /// Returns the driver's name.
-    pub fn get_name(&self) -> &String {
-        &self.name
-    }
-
-    /// Returns the driver's long name.
-    pub fn get_long_name(&self) -> &String {
-        &self.long_name
-    }
-
-    /// Returns the value of the FFI device pointer.
-    pub fn get_pointer(&self) -> *mut sr_dev_driver {
-        self.p_driver
+            || (value == self.driver.get_name())
+            || (value == self.driver.get_long_name())
     }
 }
 
@@ -298,4 +243,18 @@ impl Channel {
     pub fn get_index(&self) -> i32 {
         self.index
     }
+}
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_demo_driver_detection() {}
+
+    ///
+    #[test]
+    fn test_demo_device_detection() {}
+
+    #[test]
+    fn test_scan() {}
 }

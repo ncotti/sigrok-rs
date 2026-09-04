@@ -1,5 +1,5 @@
-use sigrok_rs::{input_module::InputModule, output_module::OutputModule, types::SrError, *};
 use sigrok_rs::trigger::TriggerEvent;
+use sigrok_rs::{input_module::InputModule, output_module::OutputModule, types::SrError, *};
 
 fn main() -> Result<(), SrError> {
     println!(
@@ -20,7 +20,6 @@ fn main() -> Result<(), SrError> {
 
     // println!("{:?}", input_modules);
 
-    
     //session.set_trigger(TriggerEvent::One)?;
     println!("Hello");
     session.run(10000)?;
