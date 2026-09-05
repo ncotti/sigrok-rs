@@ -88,9 +88,9 @@ impl Driver {
 
         let p_devices: Vec<*mut sr_dev_inst> = gslist_to_vec(device_list);
 
-        Ok(p_devices)
+        unsafe { glib::ffi::g_slist_free(device_list.cast()) };
 
-        // unsafe { glib::ffi::g_slist_free(device_list.cast()) };
+        Ok(p_devices)
     }
 
     /// Returns the driver's name.
