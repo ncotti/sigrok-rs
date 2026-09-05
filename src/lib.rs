@@ -10,6 +10,8 @@ pub mod trigger;
 pub mod types;
 pub mod version;
 
+mod utils;
+
 use crate::device::Device;
 use crate::driver::Driver;
 use crate::input_module::InputModule;
@@ -245,19 +247,10 @@ impl Session {
         // For each driver, scan if there are any devices connected
         let mut devices: Vec<Device> = Vec::new();
         for driver in Driver::list(self.context)? {
-            sr_try!(sr::sr_driver_init(self.context, driver.get_pointer()));
-
-            let device_list: *mut GSList =
-                unsafe { sr::sr_driver_scan(driver.get_pointer(), 0x00 as *mut GSList) };
-            let mut device_node: *mut GSList = device_list;
-
-            while device_node != null_mut() {
-                let p_device: *mut sr_dev_inst = unsafe { *device_node }.data.cast();
-
+            let p_devices = driver.scan_for_devices(self.context)?;
+            for p_device in p_devices {
                 devices.push(Device::new(p_device, driver.clone()));
-                device_node = unsafe { *device_node }.next;
             }
-
             // unsafe { glib::ffi::g_slist_free(device_list.cast()) };
         }
 

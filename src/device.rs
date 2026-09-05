@@ -3,27 +3,27 @@
 use libsigrok_sys::sigrok as sr;
 
 use crate::driver::Driver;
-use libsigrok_sys::sigrok::sr_dev_inst;
+use sr::sr_dev_inst;
 
 use std::ffi::CStr;
 use std::ptr::null_mut;
 
-use libsigrok_sys::sigrok::GSList;
-use libsigrok_sys::sigrok::sr_channel;
+use sr::GSList;
+use sr::sr_channel;
 
 use crate::sr_try;
 use crate::types::ChannelType;
 use crate::types::SrError;
 
-/// A device can be though as any  lab instrument which is capable of
+/// A device can be though as any lab instrument which is capable of
 /// measuring something. E.g.: Logic analyzers, oscilloscopes, multimeters,
 /// thermometers, etc.
 ///
-/// A device has a driver to communicate with it, and possesses `channels`
-/// from where the data is read.
+/// A device has a driver to communicate with it, and an arbitrary number of
+/// `channels` from where data is read.
 #[derive(Debug, Default)]
 pub struct Device {
-    /// Driver used to communicate with the device.
+    /// Driver used to handle with the device.
     driver: Driver,
     /// Raw C FFI pointer to the device's instance.
     p_device: *mut sr_dev_inst,
@@ -42,6 +42,35 @@ pub struct Device {
 }
 
 impl Device {
+    /// Returns the list of all discovered devices currently plugged to the PC.
+    ///
+    /// The "demo" device is always discovered, so the returned vector will
+    /// never be empty.
+    pub fn scan(context: *mut sr::sr_context) -> Result<Vec<Device>, SrError> {
+        let mut devices: Vec<Device> = Vec::new();
+
+        // The driver is the one that scans for devices, so you have to
+        // initialize each one and do a search.
+        for driver in Driver::list(context)? {
+            sr_try!(sr::sr_driver_init(context, driver.get_pointer()));
+
+            let device_list: *mut GSList =
+                unsafe { sr::sr_driver_scan(driver.get_pointer(), 0x00 as *mut GSList) };
+            let mut device_node: *mut GSList = device_list;
+
+            while device_node != null_mut() {
+                let p_device: *mut sr_dev_inst = unsafe { *device_node }.data.cast();
+
+                devices.push(Device::new(p_device, driver.clone()));
+                device_node = unsafe { *device_node }.next;
+            }
+
+            // unsafe { glib::ffi::g_slist_free(device_list.cast()) };
+        }
+
+        Ok(devices)
+    }
+
     /// Given a non-null pointer to a device and its driver, this function
     /// scouts for the device's related information and fills the structure.
     ///
@@ -249,12 +278,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_scan() {}
+
+    #[test]
     fn test_demo_driver_detection() {}
 
     ///
     #[test]
     fn test_demo_device_detection() {}
-
-    #[test]
-    fn test_scan() {}
 }

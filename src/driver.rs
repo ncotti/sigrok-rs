@@ -1,13 +1,17 @@
 //! Drivers
+//!
+//! Any device has a driver associated, which is used to interact with it.
 
-use libsigrok_sys::sigrok as sr;
+use libsigrok_sys::sigrok::{self as sr, GSList, sr_dev_inst};
 
 use sr::{sr_context, sr_dev_driver};
 
 use std::ffi::CStr;
 use std::ptr::{null, null_mut};
 
+use crate::sr_try;
 use crate::types::SrError;
+use crate::utils::gslist_to_vec;
 
 /// Sigrok's drivers for all devices.
 ///
@@ -71,6 +75,24 @@ impl Driver {
         Ok(drivers)
     }
 
+    /// Scans for plugged devices that can be handled with the given driver,
+    /// and returns a list of the raw C FFI pointers.
+    pub fn scan_for_devices(
+        &self,
+        context: *mut sr_context,
+    ) -> Result<Vec<*mut sr_dev_inst>, SrError> {
+        sr_try!(sr::sr_driver_init(context, self.get_pointer()));
+
+        let device_list: *mut GSList =
+            unsafe { sr::sr_driver_scan(self.get_pointer(), null_mut()) };
+
+        let p_devices: Vec<*mut sr_dev_inst> = gslist_to_vec(device_list);
+
+        Ok(p_devices)
+
+        // unsafe { glib::ffi::g_slist_free(device_list.cast()) };
+    }
+
     /// Returns the driver's name.
     pub fn get_name(&self) -> &String {
         &self.name
@@ -89,10 +111,9 @@ impl Driver {
 
 mod tests {
     use super::*;
-    use crate::{driver, sr_try, types::SrError};
 
     #[test]
-    fn test_list_drivers() -> Result<(), SrError> {
+    fn test_scan_drivers() -> Result<(), SrError> {
         let mut context: *mut sr_context = null_mut();
         sr_try!(sr::sr_init(&mut context));
 
@@ -105,6 +126,25 @@ mod tests {
         assert!(demo_driver.get_name() == "demo");
         assert!(demo_driver.get_long_name() == "Demo driver and pattern generator");
 
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
+
+    #[test]
+    fn test_scan_devices() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
+
+        let drivers: Vec<Driver> = Driver::list(context)?;
+
+        let mut count: usize = 0;
+        for driver in drivers {
+            let devices: Vec<*mut sr_dev_inst> = driver.scan_for_devices(context)?;
+
+            count += devices.len();
+        }
+
+        assert!(count >= 1);
         sr_try!(sr::sr_exit(context));
         Ok(())
     }
