@@ -50,7 +50,6 @@ pub fn gslist_to_vec<T>(list: *mut GSList) -> Vec<*mut T> {
 /// Although `data` is defined as a char pointer, the size of the data can
 /// be of any length, that is why the `<T>` is provided as an argument.
 pub fn garray_to_vec<T: Copy>(array: *mut GArray) -> Vec<T> {
-    let sizeof: u32 = std::mem::size_of::<T>() as u32;
     let mut output: Vec<T> = Vec::new();
 
     if array == null_mut() {
@@ -59,14 +58,14 @@ pub fn garray_to_vec<T: Copy>(array: *mut GArray) -> Vec<T> {
 
     let array: GArray = unsafe { *array };
 
-    let mut real_len: u32 = array.len / sizeof;
+    let mut elements: u32 = array.len;
     let mut real_data: *mut T = array.data.cast();
 
-    while real_len > 0 {
+    while elements > 0 {
         output.push(unsafe { *real_data });
 
         real_data = unsafe { real_data.offset(1) };
-        real_len -= 1;
+        elements -= 1;
     }
 
     output

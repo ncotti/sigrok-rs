@@ -243,18 +243,8 @@ impl Session {
     ///
     /// The device "demo" is always discovered, so the returned vector will
     /// never be empty.
-    pub fn scan(&mut self) -> Result<Vec<Device>, SrError> {
-        // For each driver, scan if there are any devices connected
-        let mut devices: Vec<Device> = Vec::new();
-        for driver in Driver::list(self.context)? {
-            let p_devices = driver.scan_for_devices(self.context)?;
-            for p_device in p_devices {
-                devices.push(Device::new(p_device, driver.clone()));
-            }
-            // unsafe { glib::ffi::g_slist_free(device_list.cast()) };
-        }
-
-        Ok(devices)
+    pub fn scan(&self) -> Result<Vec<Device>, SrError> {
+        Ok(Device::scan(self.context)?)
     }
 
     pub fn set_trigger(&self, event: TriggerEvent) -> Result<(), SrError> {

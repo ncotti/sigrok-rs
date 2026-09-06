@@ -1,15 +1,20 @@
 //! Device representation
 
 use libsigrok_sys::sigrok as sr;
+use libsigrok_sys::sigrok::sr_channel_group;
+use libsigrok_sys::sigrok::sr_dev_driver;
+use libsigrok_sys::sigrok::sr_keytype_SR_KEY_CONFIG;
 
 use crate::driver::Driver;
-use sr::sr_dev_inst;
+use crate::types::ConfigOption;
+use crate::utils::garray_to_vec;
+use crate::utils::gslist_to_vec;
 
 use std::ffi::CStr;
+use std::ptr::null;
 use std::ptr::null_mut;
 
-use sr::GSList;
-use sr::sr_channel;
+use sr::{GSList, sr_channel, sr_context, sr_dev_inst};
 
 use crate::sr_try;
 use crate::types::ChannelType;
@@ -19,26 +24,32 @@ use crate::types::SrError;
 /// measuring something. E.g.: Logic analyzers, oscilloscopes, multimeters,
 /// thermometers, etc.
 ///
-/// A device has a driver to communicate with it, and an arbitrary number of
-/// `channels` from where data is read.
+/// A device has a driver to communicate with it, configuration options,
+/// and an arbitrary number of `channel_groups`, with `channels`
+/// from where data is read.
 #[derive(Debug, Default)]
 pub struct Device {
     /// Driver used to handle with the device.
     driver: Driver,
     /// Raw C FFI pointer to the device's instance.
     p_device: *mut sr_dev_inst,
-    /// Vendor string, may be empty.
+    /// Vendor string. May be empty.
     vendor: String,
-    /// Model string, may be empty
+    /// Model string. May be empty
     model: String,
-    /// Version string, may be empty.
+    /// Version string. May be empty.
     version: String,
-    /// Serial number, may be empty.
+    /// Serial number. May be empty.
     serial_number: String,
-    /// Connection ID, may be empty.
+    /// Connection ID, as detected by the operating system. May be empty.
+    ///
+    /// A typical value would be something like "usb/5-1.2.2", which
+    /// corresponds to the "sysfs" path at `/sys/bus/usb/devices/5-1.2.2`.
     connection_id: String,
-    /// Device's channels, from where data will be read.
-    channels: Vec<Channel>,
+    /// Device-wide configuration options
+    config_options: Vec<ConfigOption>,
+    /// channel groups
+    channel_groups: Vec<ChannelGroup>,
 }
 
 impl Device {
@@ -49,33 +60,25 @@ impl Device {
     pub fn scan(context: *mut sr::sr_context) -> Result<Vec<Device>, SrError> {
         let mut devices: Vec<Device> = Vec::new();
 
-        // The driver is the one that scans for devices, so you have to
-        // initialize each one and do a search.
         for driver in Driver::list(context)? {
-            sr_try!(sr::sr_driver_init(context, driver.get_pointer()));
+            let p_devices: Vec<*mut sr_dev_inst> = driver.scan_for_devices(context)?;
 
-            let device_list: *mut GSList =
-                unsafe { sr::sr_driver_scan(driver.get_pointer(), 0x00 as *mut GSList) };
-            let mut device_node: *mut GSList = device_list;
-
-            while device_node != null_mut() {
-                let p_device: *mut sr_dev_inst = unsafe { *device_node }.data.cast();
-
-                devices.push(Device::new(p_device, driver.clone()));
-                device_node = unsafe { *device_node }.next;
+            for p_device in p_devices {
+                devices.push(Device::new(p_device, &driver));
             }
-
-            // unsafe { glib::ffi::g_slist_free(device_list.cast()) };
         }
 
         Ok(devices)
     }
 
     /// Given a non-null pointer to a device and its driver, this function
-    /// scouts for the device's related information and fills the structure.
+    /// scouts for the its related information and returns the device.
+    ///
+    /// * `p_device`: Pointer to a device instance.
+    /// * `driver`: A driver obtained from `Driver::list()`.
     ///
     /// This function will panic! if `p_device` is NULL.
-    pub fn new(p_device: *mut sr_dev_inst, driver: Driver) -> Self {
+    fn new(p_device: *mut sr_dev_inst, driver: &Driver) -> Self {
         let vendor = unsafe { sr::sr_dev_inst_vendor_get(p_device) };
         let vendor: String = if vendor == null_mut() {
             String::new()
@@ -116,24 +119,37 @@ impl Device {
         let connection_id: String = if connection_id == null_mut() {
             String::new()
         } else {
-            let out: String = unsafe { CStr::from_ptr(connection_id) }
+            unsafe { CStr::from_ptr(connection_id) }
                 .to_string_lossy()
                 .to_string()
-                .clone();
-
-            //unsafe{glib::ffi::g_free(connection_id.cast_mut().cast())};
-            out
         };
 
+        let options = unsafe { sr::sr_dev_options(driver.get_pointer(), p_device, null()) };
+        let options: Vec<u32> = garray_to_vec(options);
+
+        let mut config_options: Vec<ConfigOption> = Vec::new();
+        for option in options {
+            let key_info: *const sr::sr_key_info =
+                unsafe { sr::sr_key_info_get(sr_keytype_SR_KEY_CONFIG as i32, option) };
+            if key_info == null() {
+                continue;
+            }
+
+            let key_info = unsafe { *key_info };
+
+            config_options.push(ConfigOption::from(key_info));
+        }
+
         Device {
-            driver: driver,
+            driver: driver.clone(),
             p_device: p_device,
             vendor: vendor,
             model: model,
             version: version,
             serial_number: serial_number,
             connection_id: connection_id,
-            channels: Channel::get_channels(p_device),
+            config_options: config_options,
+            channel_groups: ChannelGroup::scan(p_device, driver.get_pointer()),
         }
     }
 
@@ -172,14 +188,25 @@ impl Device {
         self.p_device
     }
 
+    /// Returns the driver's name associated with the device.
+    pub fn get_driver_name(&self) -> &String {
+        self.driver.get_name()
+    }
+
     /// Returns the device's channel whose index matches the argument.
     pub fn get_channel_by_index(&self, index: i32) -> Option<&Channel> {
-        self.channels.iter().find(|channel| channel.index == index)
+        self.channel_groups[0]
+            .channels
+            .iter()
+            .find(|channel| channel.index == index)
     }
 
     /// Returns the device's channel whose name matches the argument.
     pub fn get_channel_by_name(&self, name: String) -> Option<&Channel> {
-        self.channels.iter().find(|channel| channel.name == name)
+        self.channel_groups[0]
+            .channels
+            .iter()
+            .find(|channel| channel.name == name)
     }
 
     /// Compares the given value with the device's vendor, model, version,
@@ -200,6 +227,94 @@ impl Device {
             || (value == self.connection_id)
             || (value == self.driver.get_name())
             || (value == self.driver.get_long_name())
+    }
+}
+
+impl TryFrom<(&str, *mut sr_context)> for Device {
+    type Error = SrError;
+
+    fn try_from(value: (&str, *mut sr_context)) -> Result<Self, Self::Error> {
+        let devices = Device::scan(value.1)?;
+        let expected_device = devices.into_iter().find(|dev| {
+            (dev.get_vendor() == value.0)
+                || (dev.get_model() == value.0)
+                || (dev.get_serial_number() == value.0 || (dev.get_driver_name() == value.0))
+        });
+
+        if expected_device.is_none() {
+            return Err(SrError::SrDeviceNotFound);
+        }
+
+        Ok(expected_device.unwrap())
+    }
+}
+
+/// A channel group holds an arbitrary amount data channels from a
+/// device, and groups common characteristics between them.
+///
+/// A typical separation comes from having digital and analog channel
+/// groups in the same device.
+#[derive(Debug)]
+pub struct ChannelGroup {
+    /// Arbitrary name given to the channel group.
+    pub name: String,
+    /// Channels that form part of the given group.
+    pub channels: Vec<Channel>,
+    /// Configuration options that only apply to this group of channels, not
+    /// the whole device. It may be empty.
+    pub config_options: Vec<ConfigOption>,
+}
+
+impl ChannelGroup {
+    /// Returns all channel groups from a device.
+    pub fn scan(p_device: *mut sr_dev_inst, p_driver: *const sr_dev_driver) -> Vec<ChannelGroup> {
+        let p_channel_groups: *mut GSList = unsafe { sr::sr_dev_inst_channel_groups_get(p_device) };
+        let p_channel_groups: Vec<*mut sr_channel_group> = gslist_to_vec(p_channel_groups);
+
+        let mut channel_groups: Vec<ChannelGroup> = Vec::new();
+        for p_group in p_channel_groups {
+            if p_group != null_mut() {
+                let mut channels: Vec<Channel> = Vec::new();
+
+                let group: sr_channel_group = unsafe { *p_group };
+
+                let name: String = unsafe { CStr::from_ptr(group.name) }
+                    .to_string_lossy()
+                    .to_string();
+
+                let p_channels: Vec<*mut sr_channel> = gslist_to_vec(group.channels);
+
+                for p_channel in p_channels {
+                    channels.push(Channel::new(p_channel));
+                }
+
+                let options: *mut sr::_GArray =
+                    unsafe { sr::sr_dev_options(p_driver, p_device, p_group) };
+                let options: Vec<u32> = garray_to_vec(options);
+
+                let mut channel_options: Vec<ConfigOption> = Vec::new();
+                for option in options {
+                    let key_info: *const sr::sr_key_info =
+                        unsafe { sr::sr_key_info_get(sr_keytype_SR_KEY_CONFIG as i32, option) };
+                    if key_info == null() {
+                        continue;
+                    }
+
+                    let key_info = unsafe { *key_info };
+                    channel_options.push(ConfigOption::from(key_info));
+                }
+
+                let group = ChannelGroup {
+                    name: name,
+                    channels: channels,
+                    config_options: channel_options,
+                };
+
+                channel_groups.push(group);
+            }
+        }
+
+        channel_groups
     }
 }
 
@@ -278,12 +393,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_scan() {}
+    fn test_device_scan() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
+        let devices: Vec<Device> = Device::scan(context)?;
+        assert!(!devices.is_empty());
+
+        dbg!(&devices);
+        panic!("hi");
+
+        let demo_device = devices
+            .into_iter()
+            .find(|dev| dev.get_model() == "Demo device")
+            .expect("Demo device should exist");
+        assert!(demo_device.driver.get_name() == "demo");
+
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
 
     #[test]
-    fn test_demo_driver_detection() {}
+    fn test_device_from_driver_name() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
 
-    ///
+        let demo_device = Device::try_from(("demo", context))?;
+        assert!(demo_device.get_model() == "Demo device");
+
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
+
     #[test]
-    fn test_demo_device_detection() {}
+    fn test_device_from_model_name() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
+
+        let demo_device = Device::try_from(("Demo device", context))?;
+        assert!(demo_device.get_driver_name() == "demo");
+
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
+
+    #[test]
+    fn test_device_channels() {}
 }

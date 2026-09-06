@@ -1,5 +1,8 @@
 //! Rust's structs and enums derived from the primitive types of libsigrok.
 
+use std::{ffi::CStr, ptr::null_mut};
+
+use libsigrok_sys::sigrok::{sr_configkey_SR_CONF_LOGIC_ANALYZER, sr_key_info};
 use thiserror::Error;
 
 /// Log level
@@ -91,4 +94,74 @@ impl From<i32> for ChannelType {
             _ => ChannelType::Digital,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigOption {
+    key: u32,
+    datatype: i32,
+    id: String,
+    name: String,
+}
+
+impl From<sr_key_info> for ConfigOption {
+    fn from(info: sr_key_info) -> Self {
+        let id: String = if info.id == null_mut() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(info.id) }
+                .to_string_lossy()
+                .to_string()
+        };
+
+        let name: String = if info.name == null_mut() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(info.name) }
+                .to_string_lossy()
+                .to_string()
+        };
+
+        ConfigOption {
+            key: info.key,
+            datatype: info.datatype,
+            id: id,
+            name: name,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
+pub enum DeviceType {
+    /// The device can act as logic analyzer.
+    LogicAnalyzer = 10000,
+    /// The device can act as an oscilloscope.
+    Oscilloscope = 10001,
+    /// The device can act as a multimeter.
+    Multimeter = 10002,
+    /// The device is a demo device.
+    DemoDev = 10003,
+    /// The device can act as a sound level meter.
+    SoundLevelMeter = 10004,
+    /// The device can measure temperature.
+    Thermometer = 10005,
+    /// The device can measure humidity.
+    Hygrometer = 10006,
+    /// The device can measure energy consumption.
+    EnergyMeter = 10007,
+    /// The device can act as a signal demodulator.
+    Demodulator = 10008,
+    /// The device can act as a programmable power supply.
+    PowerSupply = 10009,
+    /// The device can act as an LCR meter.
+    LCRMeter = 10010,
+    /// The device can act as an electronic load.
+    ElectronicLoad = 10011,
+    /// The device can act as a scale.
+    Scale = 10012,
+    /// The device can act as a function generator.
+    SignalGenerator = 10013,
+    /// The device can measure power.
+    PowerMeter = 10014,
 }
