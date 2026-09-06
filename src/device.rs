@@ -64,7 +64,7 @@ impl Device {
             let p_devices: Vec<*mut sr_dev_inst> = driver.scan_for_devices(context)?;
 
             for p_device in p_devices {
-                devices.push(Device::new(p_device, &driver));
+                devices.push(Device::new(p_device, &driver)?);
             }
         }
 
@@ -78,7 +78,7 @@ impl Device {
     /// * `driver`: A driver obtained from `Driver::list()`.
     ///
     /// This function will panic! if `p_device` is NULL.
-    fn new(p_device: *mut sr_dev_inst, driver: &Driver) -> Self {
+    fn new(p_device: *mut sr_dev_inst, driver: &Driver) -> Result<Self, SrError> {
         let vendor = unsafe { sr::sr_dev_inst_vendor_get(p_device) };
         let vendor: String = if vendor == null_mut() {
             String::new()
@@ -124,23 +124,9 @@ impl Device {
                 .to_string()
         };
 
-        let options = unsafe { sr::sr_dev_options(driver.get_pointer(), p_device, null()) };
-        let options: Vec<u32> = garray_to_vec(options);
+        let config_options = ConfigOption::scan(driver.get_pointer(), p_device, null())?;
 
-        let mut config_options: Vec<ConfigOption> = Vec::new();
-        for option in options {
-            let key_info: *const sr::sr_key_info =
-                unsafe { sr::sr_key_info_get(sr_keytype_SR_KEY_CONFIG as i32, option) };
-            if key_info == null() {
-                continue;
-            }
-
-            let key_info = unsafe { *key_info };
-
-            config_options.push(ConfigOption::from(key_info));
-        }
-
-        Device {
+        Ok(Device {
             driver: driver.clone(),
             p_device: p_device,
             vendor: vendor,
@@ -149,8 +135,8 @@ impl Device {
             serial_number: serial_number,
             connection_id: connection_id,
             config_options: config_options,
-            channel_groups: ChannelGroup::scan(p_device, driver.get_pointer()),
-        }
+            channel_groups: ChannelGroup::scan(p_device, driver.get_pointer())?,
+        })
     }
 
     pub fn open(&self) -> Result<(), SrError> {
@@ -267,7 +253,10 @@ pub struct ChannelGroup {
 
 impl ChannelGroup {
     /// Returns all channel groups from a device.
-    pub fn scan(p_device: *mut sr_dev_inst, p_driver: *const sr_dev_driver) -> Vec<ChannelGroup> {
+    pub fn scan(
+        p_device: *mut sr_dev_inst,
+        p_driver: *const sr_dev_driver,
+    ) -> Result<Vec<ChannelGroup>, SrError> {
         let p_channel_groups: *mut GSList = unsafe { sr::sr_dev_inst_channel_groups_get(p_device) };
         let p_channel_groups: Vec<*mut sr_channel_group> = gslist_to_vec(p_channel_groups);
 
@@ -288,21 +277,7 @@ impl ChannelGroup {
                     channels.push(Channel::new(p_channel));
                 }
 
-                let options: *mut sr::_GArray =
-                    unsafe { sr::sr_dev_options(p_driver, p_device, p_group) };
-                let options: Vec<u32> = garray_to_vec(options);
-
-                let mut channel_options: Vec<ConfigOption> = Vec::new();
-                for option in options {
-                    let key_info: *const sr::sr_key_info =
-                        unsafe { sr::sr_key_info_get(sr_keytype_SR_KEY_CONFIG as i32, option) };
-                    if key_info == null() {
-                        continue;
-                    }
-
-                    let key_info = unsafe { *key_info };
-                    channel_options.push(ConfigOption::from(key_info));
-                }
+                let channel_options = ConfigOption::scan(p_driver, p_device, p_group)?;
 
                 let group = ChannelGroup {
                     name: name,
@@ -314,7 +289,7 @@ impl ChannelGroup {
             }
         }
 
-        channel_groups
+        Ok(channel_groups)
     }
 }
 
@@ -390,12 +365,16 @@ impl Channel {
 }
 
 mod tests {
+    use crate::types::LogLevel;
+
     use super::*;
 
     #[test]
     fn test_device_scan() -> Result<(), SrError> {
         let mut context: *mut sr_context = null_mut();
         sr_try!(sr::sr_init(&mut context));
+        //sr_try!(sr::sr_log_loglevel_set(LogLevel::LogSpew as i32));
+
         let devices: Vec<Device> = Device::scan(context)?;
         assert!(!devices.is_empty());
 
@@ -437,5 +416,27 @@ mod tests {
     }
 
     #[test]
-    fn test_device_channels() {}
+    fn test_device_config_options() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
+
+        let demo_device = Device::try_from(("Demo device", context))?;
+        assert!(!demo_device.config_options.is_empty());
+        //todo!();
+
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
+
+    #[test]
+    fn test_device_channel_groups() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
+
+        let demo_device = Device::try_from(("Demo device", context))?;
+        //todo!();
+
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
 }

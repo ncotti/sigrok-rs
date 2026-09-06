@@ -1,9 +1,16 @@
 //! Rust's structs and enums derived from the primitive types of libsigrok.
 
+use std::ptr::null;
 use std::{ffi::CStr, ptr::null_mut};
+
+use glib::ffi::GVariant;
+use libsigrok_sys::sigrok::{self as sr, _GVariant, sr_keytype_SR_KEY_CONFIG};
 
 use libsigrok_sys::sigrok::{sr_configkey_SR_CONF_LOGIC_ANALYZER, sr_key_info};
 use thiserror::Error;
+
+use crate::sr_try;
+use crate::utils::garray_to_vec;
 
 /// Log level
 #[derive(Debug, Clone, Copy)]
@@ -99,34 +106,135 @@ impl From<i32> for ChannelType {
 #[derive(Debug, Clone)]
 pub struct ConfigOption {
     key: u32,
-    datatype: i32,
+    data_type: GVariantDataType,
     id: String,
     name: String,
+    value: String,
+    possible_values: Vec<String>,
 }
 
-impl From<sr_key_info> for ConfigOption {
-    fn from(info: sr_key_info) -> Self {
-        let id: String = if info.id == null_mut() {
-            String::new()
-        } else {
-            unsafe { CStr::from_ptr(info.id) }
-                .to_string_lossy()
-                .to_string()
-        };
+impl ConfigOption {
+    /// Returns a vector with all the configuration options for the given device.
+    ///
+    /// If `p_group == null()`, then the configuration options returned will be
+    /// device-wide. Otherwise, they will be specific to the channel group.
+    pub fn scan(
+        p_driver: *const sr::sr_dev_driver,
+        p_device: *const sr::sr_dev_inst,
+        p_group: *const sr::sr_channel_group,
+    ) -> Result<Vec<ConfigOption>, SrError> {
+        let keys: *mut sr::_GArray = unsafe { sr::sr_dev_options(p_driver, p_device, p_group) };
+        let keys: Vec<u32> = garray_to_vec(keys);
 
-        let name: String = if info.name == null_mut() {
-            String::new()
-        } else {
-            unsafe { CStr::from_ptr(info.name) }
-                .to_string_lossy()
-                .to_string()
-        };
+        let mut options: Vec<ConfigOption> = Vec::new();
+        for key in keys {
+            let key_info: *const sr::sr_key_info =
+                unsafe { sr::sr_key_info_get(sr_keytype_SR_KEY_CONFIG as i32, key) };
+            if key_info == null() {
+                continue;
+            }
 
-        ConfigOption {
-            key: info.key,
-            datatype: info.datatype,
-            id: id,
-            name: name,
+            let key_info = unsafe { *key_info };
+
+            let id: String = if key_info.id == null_mut() {
+                String::new()
+            } else {
+                unsafe { CStr::from_ptr(key_info.id) }
+                    .to_string_lossy()
+                    .to_string()
+            };
+
+            let name: String = if key_info.name == null_mut() {
+                String::new()
+            } else {
+                unsafe { CStr::from_ptr(key_info.name) }
+                    .to_string_lossy()
+                    .to_string()
+            };
+
+            let data_type = GVariantDataType::try_from(key_info.datatype)?;
+            let mut possible_values: Vec<String> = Vec::new();
+
+            if data_type == GVariantDataType::STRING {
+                let mut p_g_variant: *mut GVariant = null_mut();
+                let status = unsafe {
+                    sr::sr_config_list(
+                        p_driver,
+                        p_device,
+                        p_group,
+                        key,
+                        std::ptr::addr_of_mut!(p_g_variant).cast(),
+                    )
+                };
+                let qtty = if status == SrError::SrOk as i32 {
+                    unsafe { glib::ffi::g_variant_n_children(p_g_variant) }
+                } else if status == SrError::SrErrArg as i32 {
+                    0
+                } else {
+                    return Err(SrError::try_from(status)).unwrap();
+                };
+
+                for i in 0..qtty {
+                    let child = unsafe { glib::ffi::g_variant_get_child_value(p_g_variant, i) };
+                    let value = unsafe {
+                        CStr::from_ptr(glib::ffi::g_variant_get_string(child, null_mut()))
+                            .to_string_lossy()
+                            .to_string()
+                    };
+                    possible_values.push(value);
+                }
+            }
+
+            let config_option = ConfigOption {
+                key: key_info.key,
+                data_type: data_type,
+                id: id,
+                name: name,
+                value: String::new(),
+                possible_values: possible_values,
+            };
+
+            options.push(config_option);
+        }
+
+        Ok(options)
+    }
+}
+
+/// pub const sr_datatype_SR_T_UINT64: sr_datatype = 10000;
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub enum GVariantDataType {
+    UINT64 = 10000,
+    STRING = 10001,
+    BOOL = 10002,
+    FLOAT = 10003,
+    RATIONAL_PERIOD = 10004,
+    RATIONAL_VOLT = 10005,
+    KEYVALUE = 10006,
+    UINT64_RANGE = 10007,
+    DOUBLE_RANGE = 10008,
+    INT32 = 10009,
+    MQ = 10010,
+}
+
+impl TryFrom<i32> for GVariantDataType {
+    type Error = SrError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            10000 => Ok(GVariantDataType::UINT64),
+            10001 => Ok(GVariantDataType::STRING),
+            10002 => Ok(GVariantDataType::BOOL),
+            10003 => Ok(GVariantDataType::FLOAT),
+            10004 => Ok(GVariantDataType::RATIONAL_PERIOD),
+            10005 => Ok(GVariantDataType::RATIONAL_VOLT),
+            10006 => Ok(GVariantDataType::KEYVALUE),
+            10007 => Ok(GVariantDataType::UINT64_RANGE),
+            10008 => Ok(GVariantDataType::DOUBLE_RANGE),
+            10009 => Ok(GVariantDataType::INT32),
+            10010 => Ok(GVariantDataType::MQ),
+            _ => Err(SrError::SrErrNA),
         }
     }
 }
