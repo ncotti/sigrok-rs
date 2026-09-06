@@ -194,12 +194,53 @@ impl ConfigOption {
                 }
             }
 
+            let mut gvar_value: *mut GVariant = null_mut();
+            let status = unsafe {
+                sr::sr_config_get(
+                    p_driver,
+                    p_device,
+                    p_group,
+                    key,
+                    std::ptr::addr_of_mut!(gvar_value).cast(),
+                )
+            };
+            let value: String = if (status == SrError::SrOk as i32) {
+                unsafe {
+                    match data_type {
+                        GVariantDataType::BOOL => {
+                            glib::ffi::g_variant_get_boolean(gvar_value).to_string()
+                        }
+                        GVariantDataType::DOUBLE_RANGE | GVariantDataType::FLOAT => {
+                            glib::ffi::g_variant_get_double(gvar_value).to_string()
+                        }
+                        GVariantDataType::INT32 => {
+                            glib::ffi::g_variant_get_int32(gvar_value).to_string()
+                        }
+                        GVariantDataType::KEYVALUE | GVariantDataType::MQ => String::new(),
+                        GVariantDataType::RATIONAL_PERIOD | GVariantDataType::RATIONAL_VOLT => {
+                            String::new()
+                        }
+                        GVariantDataType::STRING => {
+                            CStr::from_ptr(glib::ffi::g_variant_get_string(gvar_value, null_mut()))
+                                .to_string_lossy()
+                                .to_string()
+                        }
+                        GVariantDataType::UINT64 | GVariantDataType::UINT64_RANGE => {
+                            glib::ffi::g_variant_get_uint64(gvar_value).to_string()
+                        }
+                    }
+                }
+            } else {
+                println!("Error for key {}", name);
+                String::new()
+            };
+
             let config_option = ConfigOption {
                 key: key_info.key,
                 data_type: data_type,
                 id: id,
                 name: name,
-                value: String::new(),
+                value: value,
                 possible_values: possible_values,
             };
 

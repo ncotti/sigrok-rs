@@ -119,7 +119,7 @@ impl Display for Device {
 
             if !channel_options.is_empty() {
                 writeln!(f, "    Channel group options:")?;
-                writeln!(f, "{}", device_options)?;
+                writeln!(f, "{}", channel_options)?;
             }
         }
 
