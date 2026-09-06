@@ -93,6 +93,15 @@ pub enum ChannelType {
     Analog = 10001,
 }
 
+impl ChannelType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ChannelType::Digital => "Digital",
+            ChannelType::Analog => "Analog",
+        }
+    }
+}
+
 impl From<i32> for ChannelType {
     fn from(value: i32) -> Self {
         match value {
@@ -105,12 +114,12 @@ impl From<i32> for ChannelType {
 
 #[derive(Debug, Clone)]
 pub struct ConfigOption {
-    key: u32,
-    data_type: GVariantDataType,
-    id: String,
-    name: String,
-    value: String,
-    possible_values: Vec<String>,
+    pub key: u32,
+    pub data_type: GVariantDataType,
+    pub id: String,
+    pub name: String,
+    pub value: String,
+    pub possible_values: Vec<String>,
 }
 
 impl ConfigOption {

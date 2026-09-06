@@ -11,6 +11,7 @@ use crate::utils::garray_to_vec;
 use crate::utils::gslist_to_vec;
 
 use std::ffi::CStr;
+use std::fmt::Display;
 use std::ptr::null;
 use std::ptr::null_mut;
 
@@ -50,6 +51,80 @@ pub struct Device {
     config_options: Vec<ConfigOption>,
     /// channel groups
     channel_groups: Vec<ChannelGroup>,
+}
+
+impl Display for Device {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Device info:")?;
+
+        let mut device_info: String = String::new();
+        if !self.get_vendor().is_empty() {
+            device_info.push_str(format!("  * Vendor: \"{}\"\n", self.get_vendor()).as_str());
+        }
+        if !self.get_model().is_empty() {
+            device_info.push_str(format!("  * Model: \"{}\"\n", self.get_model()).as_str());
+        }
+        if !self.get_version().is_empty() {
+            device_info.push_str(format!("  * Version: \"{}\"\n", self.get_version()).as_str());
+        }
+        if !self.get_serial_number().is_empty() {
+            device_info.push_str(
+                format!("  * Serial number: \"{}\"\n", self.get_serial_number()).as_str(),
+            );
+        }
+        if !self.get_connection_id().is_empty() {
+            device_info.push_str(
+                format!("  * Connection ID: \"{}\"\n", self.get_connection_id()).as_str(),
+            );
+        }
+        write!(f, "{}", device_info)?;
+        writeln!(f, "  * {}", self.driver)?;
+
+        let mut device_options: String = String::new();
+
+        for option in &self.config_options {
+            device_options
+                .push_str(format!("    - {}: \"{}\"\n", option.id, option.value).as_str());
+        }
+
+        if !device_options.is_empty() {
+            writeln!(f, "  * Device options:")?;
+            writeln!(f, "{}", device_options)?;
+        }
+
+        for channel_group in &self.channel_groups {
+            writeln!(f, "  * Channel group: \"{}\"", channel_group.name)?;
+            writeln!(
+                f,
+                "    | {:^10} | {:^5} | {:^7} | {:^7} |",
+                "Name", "Index", "Enabled", "Type"
+            )?;
+            for channel in &channel_group.channels {
+                writeln!(
+                    f,
+                    "    | {:^10} | {:^5} | {:^7} | {:^7} |",
+                    channel.name,
+                    channel.index,
+                    channel.enabled,
+                    channel.channel_type.as_str()
+                )?;
+            }
+
+            let mut channel_options: String = String::new();
+
+            for option in &channel_group.config_options {
+                channel_options
+                    .push_str(format!("    - {}: \"{}\"\n", option.id, option.value).as_str());
+            }
+
+            if !channel_options.is_empty() {
+                writeln!(f, "    Channel group options:")?;
+                writeln!(f, "{}", device_options)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Device {

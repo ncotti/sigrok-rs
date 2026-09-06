@@ -7,6 +7,7 @@ use libsigrok_sys::sigrok::{self as sr, GSList, sr_dev_inst};
 use sr::{sr_context, sr_dev_driver};
 
 use std::ffi::CStr;
+use std::fmt::Display;
 use std::ptr::{null, null_mut};
 
 use crate::sr_try;
@@ -27,6 +28,12 @@ pub struct Driver {
     name: String,
     /// Driver's long name.
     long_name: String,
+}
+
+impl Display for Driver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Driver: \"{}\"", self.get_name())
+    }
 }
 
 impl TryFrom<*mut sr_dev_driver> for Driver {
