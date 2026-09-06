@@ -311,13 +311,14 @@ impl Device {
                 GVariantDataType::BOOL => {
                     let possible_true_values: Vec<&str> = vec!["true", "1", "on", "ok", "t"];
                     let possible_false_values: Vec<&str> = vec!["false", "0", "off", "f"];
-                    let value: i32 = if possible_true_values.contains(&value) {
-                        1
-                    } else if possible_false_values.contains(&value) {
-                        0
-                    } else {
-                        return Err(SrError::SrInvalidOptionValue);
-                    };
+                    let value: i32 =
+                        if possible_true_values.contains(&value.to_lowercase().as_str()) {
+                            1
+                        } else if possible_false_values.contains(&value.to_lowercase().as_str()) {
+                            0
+                        } else {
+                            return Err(SrError::SrInvalidOptionValue);
+                        };
 
                     glib::ffi::g_variant_new_boolean(value)
                 }
@@ -378,6 +379,59 @@ impl Device {
         let option = option.expect("Option is not None");
 
         Ok(&option.value)
+    }
+
+    pub fn enable_channel(&mut self, name: &str) -> Result<(), SrError> {
+        for group in &mut self.channel_groups {
+            for channel in &mut group.channels {
+                if channel.get_name() == name || channel.get_index().to_string() == name {
+                    sr_try!(sr::sr_dev_channel_enable(channel.get_pointer(), 1));
+                    channel.enabled = true;
+                    return Ok(());
+                }
+            }
+        }
+        Err(SrError::SrChannelNotFound)
+    }
+
+    pub fn disable_channel(&mut self, name: &str) -> Result<(), SrError> {
+        for group in &mut self.channel_groups {
+            for channel in &mut group.channels {
+                if channel.get_name() == name || channel.get_index().to_string() == name {
+                    sr_try!(sr::sr_dev_channel_enable(channel.get_pointer(), 0));
+                    channel.enabled = false;
+                    return Ok(());
+                }
+            }
+        }
+        Err(SrError::SrChannelNotFound)
+    }
+
+    pub fn is_channel_enabled(&self, name: &str) -> Result<bool, SrError> {
+        for group in &self.channel_groups {
+            for channel in &group.channels {
+                if channel.get_name() == name || channel.get_index().to_string() == name {
+                    return Ok(channel.enabled);
+                }
+            }
+        }
+        Err(SrError::SrChannelNotFound)
+    }
+
+    pub fn set_channel_name(&mut self, old_name: &str, new_name: &str) -> Result<(), SrError> {
+        for group in &mut self.channel_groups {
+            for channel in &mut group.channels {
+                if channel.get_name() == old_name || channel.get_index().to_string() == old_name {
+                    sr_try!(sr::sr_dev_channel_name_set(
+                        channel.get_pointer(),
+                        new_name.as_ptr().cast()
+                    ));
+                    channel.name = new_name.to_string();
+                    return Ok(());
+                }
+            }
+        }
+        Err(SrError::SrChannelNotFound)
     }
 }
 
@@ -605,11 +659,93 @@ mod tests {
     }
 
     #[test]
-    fn test_device_channel_groups() -> Result<(), SrError> {
+    fn test_device_illegal_options() -> Result<(), SrError> {
         let mut context: *mut sr_context = null_mut();
         sr_try!(sr::sr_init(&mut context));
 
-        let demo_device = Device::try_from(("Demo device", context))?;
+        let mut demo_device = Device::try_from(("Demo device", context))?;
+        assert!(!demo_device.options.is_empty());
+
+        // "continuous" option can't be set
+        let result = demo_device.set_option("continuous", "true");
+        assert!(result.is_err());
+        assert!(result.unwrap_err() == SrError::SrErrArg);
+
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
+
+    #[test]
+    fn test_device_channel_enable() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
+
+        let mut demo_device = Device::try_from(("Demo device", context))?;
+
+        demo_device.enable_channel("3")?;
+        assert!(demo_device.is_channel_enabled("3")?);
+        demo_device.disable_channel("3")?;
+        assert!(!demo_device.is_channel_enabled("D3")?);
+        demo_device.enable_channel("D3")?;
+        assert!(demo_device.is_channel_enabled("3")?);
+
+        let result = demo_device.is_channel_enabled("abcdef");
+        assert!(result.is_err());
+        assert!(result.unwrap_err() == SrError::SrChannelNotFound);
+
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
+
+    #[test]
+    fn test_device_channel_change_name() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
+
+        let mut demo_device = Device::try_from(("Demo device", context))?;
+
+        demo_device.set_channel_name("3", "XD")?;
+        demo_device.set_channel_name("D4", "YY")?;
+        assert!(demo_device.is_channel_enabled("XD").is_ok());
+        assert!(demo_device.is_channel_enabled("YY").is_ok());
+        assert!(demo_device.is_channel_enabled("D3").is_err());
+        assert!(demo_device.is_channel_enabled("D4").is_err());
+
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
+
+    #[test]
+    fn test_device_channel_group_options() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
+
+        let mut demo_device = Device::try_from(("Demo device", context))?;
+
+        sr_try!(sr::sr_exit(context));
+        Ok(())
+    }
+
+    #[test]
+    fn test_device_option_with_list() -> Result<(), SrError> {
+        let mut context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut context));
+
+        let mut demo_device = Device::try_from(("Demo device", context))?;
+        assert!(!demo_device.options.is_empty());
+
+        // For the demo device, "samplerate" is defined as a list that goes
+        // from 1Hz to 1GHz, in jumps of 1Hz.
+        // Let's try setting the frequency to "0 Hz", i.e., an unsupported value.
+        let result = demo_device.set_option("samplerate", "0");
+        assert!(result.is_err());
+        assert!(result.unwrap_err() == SrError::SrErrArg);
+
+        // Setting to 500MHz should be ok
+        demo_device.set_option("samplerate", "500000000")?;
+        assert!(demo_device.get_option("samplerate")? == "500000000");
+
+        //todo!("Set pattern in channel group");
 
         sr_try!(sr::sr_exit(context));
         Ok(())

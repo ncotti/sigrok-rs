@@ -12,7 +12,7 @@ use libsigrok_sys::sigrok::{sr_configkey_SR_CONF_LOGIC_ANALYZER, sr_key_info};
 use thiserror::Error;
 
 use crate::sr_try;
-use crate::types::SrError::SrOptionNotExist;
+use crate::types::SrError::{SrErr, SrOptionNotExist};
 use crate::utils::garray_to_vec;
 
 /// Log level
@@ -66,6 +66,8 @@ pub enum SrError {
     SrOptionNotExist = -14,
     #[error("Invalid value for configuration option")]
     SrInvalidOptionValue = -15,
+    #[error("Channel name of index not found")]
+    SrChannelNotFound = -16,
 }
 
 impl From<i32> for SrError {
@@ -87,6 +89,7 @@ impl From<i32> for SrError {
             -13 => SrError::SrNull,
             -14 => SrError::SrOptionNotExist,
             -15 => SrError::SrInvalidOptionValue,
+            -16 => SrError::SrChannelNotFound,
             _ => SrError::SrErrNA,
         }
     }
