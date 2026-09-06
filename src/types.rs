@@ -4,12 +4,15 @@ use std::ptr::null;
 use std::{ffi::CStr, ptr::null_mut};
 
 use glib::ffi::GVariant;
-use libsigrok_sys::sigrok::{self as sr, _GVariant, sr_keytype_SR_KEY_CONFIG};
+use libsigrok_sys::sigrok::{
+    self as sr, _GVariant, sr_configcap_SR_CONF_GET, sr_keytype_SR_KEY_CONFIG,
+};
 
 use libsigrok_sys::sigrok::{sr_configkey_SR_CONF_LOGIC_ANALYZER, sr_key_info};
 use thiserror::Error;
 
 use crate::sr_try;
+use crate::types::SrError::SrOptionNotExist;
 use crate::utils::garray_to_vec;
 
 /// Log level
@@ -26,7 +29,7 @@ pub enum LogLevel {
 }
 
 /// Sigrok error codes
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 #[repr(i32)]
 #[allow(missing_docs)]
 pub enum SrError {
@@ -59,27 +62,32 @@ pub enum SrError {
     SrDeviceNotFound = -12,
     #[error("Pointer was NULL")]
     SrNull = -13,
+    #[error("Configuration option does not exist")]
+    SrOptionNotExist = -14,
+    #[error("Invalid value for configuration option")]
+    SrInvalidOptionValue = -15,
 }
 
-impl TryFrom<i32> for SrError {
-    type Error = &'static str;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
+impl From<i32> for SrError {
+    fn from(value: i32) -> Self {
         match value {
-            0 => Err("SrOk is not an error"),
-            -1 => Ok(SrError::SrErr),
-            -2 => Ok(SrError::SrErrMalloc),
-            -3 => Ok(SrError::SrErrArg),
-            -4 => Ok(SrError::SrErrBug),
-            -5 => Ok(SrError::SrErrSampleRate),
-            -6 => Ok(SrError::SrErrNA),
-            -7 => Ok(SrError::SrErrDevClose),
-            -8 => Ok(SrError::SrErrTimeout),
-            -9 => Ok(SrError::SrErrChannelGroup),
-            -10 => Ok(SrError::SrErrData),
-            -11 => Ok(SrError::SrErrIO),
-            -12 => Ok(SrError::SrDeviceNotFound),
-            _ => Err("Unknown SR_ERROR code value"),
+            0 => SrError::SrOk,
+            -1 => SrError::SrErr,
+            -2 => SrError::SrErrMalloc,
+            -3 => SrError::SrErrArg,
+            -4 => SrError::SrErrBug,
+            -5 => SrError::SrErrSampleRate,
+            -6 => SrError::SrErrNA,
+            -7 => SrError::SrErrDevClose,
+            -8 => SrError::SrErrTimeout,
+            -9 => SrError::SrErrChannelGroup,
+            -10 => SrError::SrErrData,
+            -11 => SrError::SrErrIO,
+            -12 => SrError::SrDeviceNotFound,
+            -13 => SrError::SrNull,
+            -14 => SrError::SrOptionNotExist,
+            -15 => SrError::SrInvalidOptionValue,
+            _ => SrError::SrErrNA,
         }
     }
 }
@@ -195,16 +203,19 @@ impl ConfigOption {
             }
 
             let mut gvar_value: *mut GVariant = null_mut();
-            let status = unsafe {
-                sr::sr_config_get(
+
+            //
+            let config_cap =
+                unsafe { sr::sr_dev_config_capabilities_list(p_device, p_group, key as i32) };
+
+            let value: String = if (config_cap & sr_configcap_SR_CONF_GET as i32) != 0 {
+                sr_try!(sr::sr_config_get(
                     p_driver,
                     p_device,
                     p_group,
                     key,
                     std::ptr::addr_of_mut!(gvar_value).cast(),
-                )
-            };
-            let value: String = if (status == SrError::SrOk as i32) {
+                ));
                 unsafe {
                     match data_type {
                         GVariantDataType::BOOL => {
@@ -231,8 +242,7 @@ impl ConfigOption {
                     }
                 }
             } else {
-                println!("Error for key {}", name);
-                String::new()
+                String::from("?")
             };
 
             let config_option = ConfigOption {

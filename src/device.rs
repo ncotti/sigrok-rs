@@ -1,5 +1,6 @@
 //! Device representation
 
+use glib::ffi::GVariant;
 use libsigrok_sys::sigrok as sr;
 use libsigrok_sys::sigrok::sr_channel_group;
 use libsigrok_sys::sigrok::sr_dev_driver;
@@ -7,6 +8,7 @@ use libsigrok_sys::sigrok::sr_keytype_SR_KEY_CONFIG;
 
 use crate::driver::Driver;
 use crate::types::ConfigOption;
+use crate::types::GVariantDataType;
 use crate::utils::garray_to_vec;
 use crate::utils::gslist_to_vec;
 
@@ -26,7 +28,7 @@ use crate::types::SrError;
 /// thermometers, etc.
 ///
 /// A device has a driver to communicate with it, configuration options,
-/// and an arbitrary number of `channel_groups`, with `channels`
+/// and an arbitrary number of `channel_groups` that hold `channels`
 /// from where data is read.
 #[derive(Debug, Default)]
 pub struct Device {
@@ -48,7 +50,7 @@ pub struct Device {
     /// corresponds to the "sysfs" path at `/sys/bus/usb/devices/5-1.2.2`.
     connection_id: String,
     /// Device-wide configuration options
-    config_options: Vec<ConfigOption>,
+    options: Vec<ConfigOption>,
     /// channel groups
     channel_groups: Vec<ChannelGroup>,
 }
@@ -80,16 +82,15 @@ impl Display for Device {
         write!(f, "{}", device_info)?;
         writeln!(f, "  * {}", self.driver)?;
 
-        let mut device_options: String = String::new();
+        let mut options: String = String::new();
 
-        for option in &self.config_options {
-            device_options
-                .push_str(format!("    - {}: \"{}\"\n", option.id, option.value).as_str());
+        for option in &self.options {
+            options.push_str(format!("    - {}: \"{}\"\n", option.id, option.value).as_str());
         }
 
-        if !device_options.is_empty() {
+        if !options.is_empty() {
             writeln!(f, "  * Device options:")?;
-            writeln!(f, "{}", device_options)?;
+            writeln!(f, "{}", options)?;
         }
 
         for channel_group in &self.channel_groups {
@@ -110,16 +111,15 @@ impl Display for Device {
                 )?;
             }
 
-            let mut channel_options: String = String::new();
+            let mut options: String = String::new();
 
-            for option in &channel_group.config_options {
-                channel_options
-                    .push_str(format!("    - {}: \"{}\"\n", option.id, option.value).as_str());
+            for option in &channel_group.options {
+                options.push_str(format!("    - {}: \"{}\"\n", option.id, option.value).as_str());
             }
 
-            if !channel_options.is_empty() {
+            if !options.is_empty() {
                 writeln!(f, "    Channel group options:")?;
-                writeln!(f, "{}", channel_options)?;
+                writeln!(f, "{}", options)?;
             }
         }
 
@@ -201,7 +201,7 @@ impl Device {
 
         let config_options = ConfigOption::scan(driver.get_pointer(), p_device, null())?;
 
-        Ok(Device {
+        let dev = Device {
             driver: driver.clone(),
             p_device: p_device,
             vendor: vendor,
@@ -209,14 +209,21 @@ impl Device {
             version: version,
             serial_number: serial_number,
             connection_id: connection_id,
-            config_options: config_options,
+            options: config_options,
             channel_groups: ChannelGroup::scan(p_device, driver.get_pointer())?,
-        })
+        };
+
+        dev.open()?;
+        Ok(dev)
     }
 
     pub fn open(&self) -> Result<(), SrError> {
-        sr_try!(sr::sr_dev_open(self.p_device));
-        Ok(())
+        let status = unsafe { sr::sr_dev_open(self.p_device) };
+        let status = SrError::from(status);
+        match status {
+            SrError::SrOk | SrError::SrErr => Ok(()),
+            _ => Err(status),
+        }
     }
 
     /// Returns the vendor string.
@@ -289,6 +296,89 @@ impl Device {
             || (value == self.driver.get_name())
             || (value == self.driver.get_long_name())
     }
+
+    pub fn set_option(&mut self, id: &str, value: &str) -> Result<(), SrError> {
+        let option = self.options.iter_mut().find(|o| o.id == id);
+
+        if option.is_none() {
+            return Err(SrError::SrOptionNotExist);
+        }
+
+        let option: &mut ConfigOption = option.expect("Option is not None");
+
+        let data: *mut GVariant = unsafe {
+            match option.data_type {
+                GVariantDataType::BOOL => {
+                    let possible_true_values: Vec<&str> = vec!["true", "1", "on", "ok", "t"];
+                    let possible_false_values: Vec<&str> = vec!["false", "0", "off", "f"];
+                    let value: i32 = if possible_true_values.contains(&value) {
+                        1
+                    } else if possible_false_values.contains(&value) {
+                        0
+                    } else {
+                        return Err(SrError::SrInvalidOptionValue);
+                    };
+
+                    glib::ffi::g_variant_new_boolean(value)
+                }
+                GVariantDataType::DOUBLE_RANGE | GVariantDataType::FLOAT => {
+                    let value: Result<f64, std::num::ParseFloatError> = value.parse();
+                    if value.is_err() {
+                        return Err(SrError::SrInvalidOptionValue);
+                    }
+                    let value = value.expect("Value is not error");
+                    glib::ffi::g_variant_new_double(value)
+                }
+                GVariantDataType::INT32 => {
+                    let value: Result<i32, std::num::ParseIntError> = value.parse();
+                    if value.is_err() {
+                        return Err(SrError::SrInvalidOptionValue);
+                    }
+                    let value = value.expect("Value is not error");
+                    glib::ffi::g_variant_new_int32(value)
+                }
+                GVariantDataType::KEYVALUE | GVariantDataType::MQ => {
+                    todo!()
+                }
+                GVariantDataType::RATIONAL_PERIOD | GVariantDataType::RATIONAL_VOLT => {
+                    todo!()
+                }
+                GVariantDataType::STRING => glib::ffi::g_variant_new_string(value.as_ptr().cast()),
+                GVariantDataType::UINT64 | GVariantDataType::UINT64_RANGE => {
+                    let value: Result<u64, std::num::ParseIntError> = value.parse();
+                    if value.is_err() {
+                        return Err(SrError::SrInvalidOptionValue);
+                    }
+                    let value = value.expect("Value is not error");
+                    glib::ffi::g_variant_new_uint64(value)
+                }
+            }
+        };
+
+        sr_try!(sr::sr_config_set(
+            self.p_device,
+            null(),
+            option.key,
+            data.cast()
+        ));
+        sr_try!(sr::sr_config_commit(self.p_device));
+
+        option.value = String::from(value);
+
+        Ok(())
+    }
+
+    pub fn get_option(&self, id: &str) -> Result<&String, SrError> {
+        let option = self.options.iter().find(|o| o.id == id);
+
+        if option.is_none() {
+            return Err(SrError::SrOptionNotExist);
+        }
+
+        let option = option.expect("Option is not None");
+
+        Ok(&option.value)
+    }
 }
 
 impl TryFrom<(&str, *mut sr_context)> for Device {
@@ -323,7 +413,7 @@ pub struct ChannelGroup {
     pub channels: Vec<Channel>,
     /// Configuration options that only apply to this group of channels, not
     /// the whole device. It may be empty.
-    pub config_options: Vec<ConfigOption>,
+    pub options: Vec<ConfigOption>,
 }
 
 impl ChannelGroup {
@@ -352,12 +442,12 @@ impl ChannelGroup {
                     channels.push(Channel::new(p_channel));
                 }
 
-                let channel_options = ConfigOption::scan(p_driver, p_device, p_group)?;
+                let options = ConfigOption::scan(p_driver, p_device, p_group)?;
 
                 let group = ChannelGroup {
                     name: name,
                     channels: channels,
-                    config_options: channel_options,
+                    options: options,
                 };
 
                 channel_groups.push(group);
@@ -440,7 +530,7 @@ impl Channel {
 }
 
 mod tests {
-    use crate::types::LogLevel;
+    use crate::types::{LogLevel, SrError::SrErr};
 
     use super::*;
 
@@ -452,9 +542,6 @@ mod tests {
 
         let devices: Vec<Device> = Device::scan(context)?;
         assert!(!devices.is_empty());
-
-        dbg!(&devices);
-        panic!("hi");
 
         let demo_device = devices
             .into_iter()
@@ -491,13 +578,27 @@ mod tests {
     }
 
     #[test]
-    fn test_device_config_options() -> Result<(), SrError> {
+    fn test_device_options() -> Result<(), SrError> {
         let mut context: *mut sr_context = null_mut();
         sr_try!(sr::sr_init(&mut context));
 
-        let demo_device = Device::try_from(("Demo device", context))?;
-        assert!(!demo_device.config_options.is_empty());
-        //todo!();
+        let mut demo_device = Device::try_from(("Demo device", context))?;
+        assert!(!demo_device.options.is_empty());
+
+        demo_device.set_option("limit_samples", "50")?;
+        assert!(demo_device.get_option("limit_samples")? == "50");
+
+        let result = demo_device.set_option("non_existent_option", "100");
+        assert!(result.is_err());
+        assert!(result.unwrap_err() == SrError::SrOptionNotExist);
+
+        let result = demo_device.set_option("limit_samples", "not_a_valid_value");
+        assert!(result.is_err());
+        assert!(result.unwrap_err() == SrError::SrInvalidOptionValue);
+
+        let result = demo_device.get_option("non_existent_option");
+        assert!(result.is_err());
+        assert!(result.unwrap_err() == SrError::SrOptionNotExist);
 
         sr_try!(sr::sr_exit(context));
         Ok(())
@@ -509,7 +610,6 @@ mod tests {
         sr_try!(sr::sr_init(&mut context));
 
         let demo_device = Device::try_from(("Demo device", context))?;
-        //todo!();
 
         sr_try!(sr::sr_exit(context));
         Ok(())
