@@ -13,6 +13,7 @@ use crate::utils::garray_to_vec;
 use crate::utils::gslist_to_vec;
 
 use std::ffi::CStr;
+use std::ffi::CString;
 use std::fmt::Display;
 use std::ptr::null;
 use std::ptr::null_mut;
@@ -297,68 +298,109 @@ impl Device {
             || (value == self.driver.get_long_name())
     }
 
+    pub fn set_channel_option(
+        &mut self,
+        channel_group_name: &str,
+        id: &str,
+        value: &str,
+    ) -> Result<(), SrError> {
+        self.set_option(format!("{} {}", channel_group_name, id).as_str(), value)?;
+        Ok(())
+    }
+
     pub fn set_option(&mut self, id: &str, value: &str) -> Result<(), SrError> {
         let option = self.options.iter_mut().find(|o| o.id == id);
 
-        if option.is_none() {
-            return Err(SrError::SrOptionNotExist);
-        }
+        let (option, p_group): (&mut ConfigOption, *const sr_channel_group) = if option.is_some() {
+            (option.unwrap(), null())
+        } else {
+            let whitespace_separated_id: Vec<&str> = id.split(" ").collect();
 
-        let option: &mut ConfigOption = option.expect("Option is not None");
+            let (group, option_id): (&mut ChannelGroup, &str) =
+                if whitespace_separated_id.len() == 1 {
+                    (&mut self.channel_groups[0], id)
+                } else if whitespace_separated_id.len() == 2 {
+                    let group_name = whitespace_separated_id[0];
+                    let option_id = whitespace_separated_id[1];
 
-        let data: *mut GVariant = unsafe {
-            match option.data_type {
-                GVariantDataType::BOOL => {
-                    let possible_true_values: Vec<&str> = vec!["true", "1", "on", "ok", "t"];
-                    let possible_false_values: Vec<&str> = vec!["false", "0", "off", "f"];
-                    let value: i32 =
-                        if possible_true_values.contains(&value.to_lowercase().as_str()) {
-                            1
-                        } else if possible_false_values.contains(&value.to_lowercase().as_str()) {
-                            0
-                        } else {
-                            return Err(SrError::SrInvalidOptionValue);
-                        };
+                    let group = self
+                        .channel_groups
+                        .iter_mut()
+                        .find(|g| g.name == group_name);
 
-                    glib::ffi::g_variant_new_boolean(value)
-                }
-                GVariantDataType::DOUBLE_RANGE | GVariantDataType::FLOAT => {
-                    let value: Result<f64, std::num::ParseFloatError> = value.parse();
-                    if value.is_err() {
-                        return Err(SrError::SrInvalidOptionValue);
+                    if group.is_none() {
+                        return Err(SrError::SrErrChannelGroup);
                     }
-                    let value = value.expect("Value is not error");
-                    glib::ffi::g_variant_new_double(value)
+
+                    (group.expect("Group is Some()"), option_id)
+                } else {
+                    return Err(SrError::SrOptionNotExist);
+                };
+
+            let option = group.options.iter_mut().find(|o| o.id == option_id);
+
+            if option.is_none() {
+                return Err(SrError::SrOptionNotExist);
+            }
+
+            (option.unwrap(), group.p_group)
+        };
+
+        let data: *mut GVariant = match option.data_type {
+            GVariantDataType::BOOL => {
+                let possible_true_values: Vec<&str> = vec!["true", "1", "on", "ok", "t"];
+                let possible_false_values: Vec<&str> = vec!["false", "0", "off", "f"];
+                let value: i32 = if possible_true_values.contains(&value.to_lowercase().as_str()) {
+                    1
+                } else if possible_false_values.contains(&value.to_lowercase().as_str()) {
+                    0
+                } else {
+                    return Err(SrError::SrInvalidOptionValue);
+                };
+
+                unsafe { glib::ffi::g_variant_new_boolean(value) }
+            }
+            GVariantDataType::DOUBLE_RANGE | GVariantDataType::FLOAT => {
+                let value: Result<f64, std::num::ParseFloatError> = value.parse();
+                if value.is_err() {
+                    return Err(SrError::SrInvalidOptionValue);
                 }
-                GVariantDataType::INT32 => {
-                    let value: Result<i32, std::num::ParseIntError> = value.parse();
-                    if value.is_err() {
-                        return Err(SrError::SrInvalidOptionValue);
-                    }
-                    let value = value.expect("Value is not error");
-                    glib::ffi::g_variant_new_int32(value)
+                let value = value.expect("Value is not error");
+                unsafe { glib::ffi::g_variant_new_double(value) }
+            }
+            GVariantDataType::INT32 => {
+                let value: Result<i32, std::num::ParseIntError> = value.parse();
+                if value.is_err() {
+                    return Err(SrError::SrInvalidOptionValue);
                 }
-                GVariantDataType::KEYVALUE | GVariantDataType::MQ => {
-                    todo!()
+                let value = value.expect("Value is not error");
+                unsafe { glib::ffi::g_variant_new_int32(value) }
+            }
+            GVariantDataType::KEYVALUE => {
+                todo!()
+            }
+            GVariantDataType::MQ => {
+                todo!()
+            }
+            GVariantDataType::RATIONAL_PERIOD | GVariantDataType::RATIONAL_VOLT => {
+                todo!()
+            }
+            GVariantDataType::STRING => unsafe {
+                glib::ffi::g_variant_new_string(CString::new(value.as_bytes()).unwrap().as_ptr())
+            },
+            GVariantDataType::UINT64 | GVariantDataType::UINT64_RANGE => {
+                let value: Result<u64, std::num::ParseIntError> = value.parse();
+                if value.is_err() {
+                    return Err(SrError::SrInvalidOptionValue);
                 }
-                GVariantDataType::RATIONAL_PERIOD | GVariantDataType::RATIONAL_VOLT => {
-                    todo!()
-                }
-                GVariantDataType::STRING => glib::ffi::g_variant_new_string(value.as_ptr().cast()),
-                GVariantDataType::UINT64 | GVariantDataType::UINT64_RANGE => {
-                    let value: Result<u64, std::num::ParseIntError> = value.parse();
-                    if value.is_err() {
-                        return Err(SrError::SrInvalidOptionValue);
-                    }
-                    let value = value.expect("Value is not error");
-                    glib::ffi::g_variant_new_uint64(value)
-                }
+                let value = value.expect("Value is not error");
+                unsafe { glib::ffi::g_variant_new_uint64(value) }
             }
         };
 
         sr_try!(sr::sr_config_set(
             self.p_device,
-            null(),
+            p_group,
             option.key,
             data.cast()
         ));
@@ -369,14 +411,47 @@ impl Device {
         Ok(())
     }
 
+    pub fn get_channel_option(
+        &self,
+        channel_group_name: &str,
+        id: &str,
+    ) -> Result<&String, SrError> {
+        Ok(self.get_option(format!("{} {}", channel_group_name, id).as_str())?)
+    }
+
     pub fn get_option(&self, id: &str) -> Result<&String, SrError> {
         let option = self.options.iter().find(|o| o.id == id);
 
-        if option.is_none() {
-            return Err(SrError::SrOptionNotExist);
-        }
+        let option = if option.is_some() {
+            option.unwrap()
+        } else {
+            let whitespace_separated_id: Vec<&str> = id.split(" ").collect();
 
-        let option = option.expect("Option is not None");
+            let (group, option_id): (&ChannelGroup, &str) = if whitespace_separated_id.len() == 1 {
+                (&self.channel_groups[0], id)
+            } else if whitespace_separated_id.len() == 2 {
+                let group_name = whitespace_separated_id[0];
+                let option_id = whitespace_separated_id[1];
+
+                let group = self.channel_groups.iter().find(|g| g.name == group_name);
+
+                if group.is_none() {
+                    return Err(SrError::SrErrChannelGroup);
+                }
+
+                (group.expect("Group is Some()"), option_id)
+            } else {
+                return Err(SrError::SrOptionNotExist);
+            };
+
+            let option = group.options.iter().find(|o| o.id == option_id);
+
+            if option.is_none() {
+                return Err(SrError::SrOptionNotExist);
+            }
+
+            option.unwrap()
+        };
 
         Ok(&option.value)
     }
@@ -461,6 +536,8 @@ impl TryFrom<(&str, *mut sr_context)> for Device {
 /// groups in the same device.
 #[derive(Debug)]
 pub struct ChannelGroup {
+    /// Raw C-FFI pointer to the channel group
+    pub p_group: *mut sr_channel_group,
     /// Arbitrary name given to the channel group.
     pub name: String,
     /// Channels that form part of the given group.
@@ -499,6 +576,7 @@ impl ChannelGroup {
                 let options = ConfigOption::scan(p_driver, p_device, p_group)?;
 
                 let group = ChannelGroup {
+                    p_group: p_group,
                     name: name,
                     channels: channels,
                     options: options,
@@ -592,7 +670,6 @@ mod tests {
     fn test_device_scan() -> Result<(), SrError> {
         let mut context: *mut sr_context = null_mut();
         sr_try!(sr::sr_init(&mut context));
-        //sr_try!(sr::sr_log_loglevel_set(LogLevel::LogSpew as i32));
 
         let devices: Vec<Device> = Device::scan(context)?;
         assert!(!devices.is_empty());
@@ -722,6 +799,27 @@ mod tests {
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
 
+        let result = demo_device.set_channel_option("xdd", "amplitude", "5");
+        assert!(result.is_err());
+        assert!(result.unwrap_err() == SrError::SrErrChannelGroup);
+
+        let result = demo_device.get_channel_option("xdd", "amplitude");
+        assert!(result.is_err());
+        assert!(result.unwrap_err() == SrError::SrErrChannelGroup);
+
+        demo_device.set_channel_option("A0", "amplitude", "5")?;
+        demo_device.set_channel_option("A0", "offset", "1")?;
+        demo_device.set_channel_option("A0", "pattern", "triangle")?;
+
+        assert!(demo_device.get_channel_option("A0", "amplitude")? == "5");
+        assert!(demo_device.get_channel_option("A0", "offset")? == "1");
+        assert!(demo_device.get_channel_option("A0", "pattern")? == "triangle");
+
+        // "pattern" option has a list of valid values.
+        let result = demo_device.set_channel_option("A0", "pattern", "invalid_pattern");
+        assert!(result.is_err());
+        assert!(result.unwrap_err() == SrError::SrErrArg);
+
         sr_try!(sr::sr_exit(context));
         Ok(())
     }
@@ -744,8 +842,6 @@ mod tests {
         // Setting to 500MHz should be ok
         demo_device.set_option("samplerate", "500000000")?;
         assert!(demo_device.get_option("samplerate")? == "500000000");
-
-        //todo!("Set pattern in channel group");
 
         sr_try!(sr::sr_exit(context));
         Ok(())
