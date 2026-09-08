@@ -1,3 +1,5 @@
+//! Output module
+
 use std::ffi::CStr;
 use std::mem;
 use std::ptr::{null, null_mut};

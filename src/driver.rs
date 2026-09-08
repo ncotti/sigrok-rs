@@ -116,6 +116,7 @@ impl Driver {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

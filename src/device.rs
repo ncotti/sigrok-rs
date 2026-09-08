@@ -4,12 +4,10 @@ use glib::ffi::GVariant;
 use libsigrok_sys::sigrok as sr;
 use libsigrok_sys::sigrok::sr_channel_group;
 use libsigrok_sys::sigrok::sr_dev_driver;
-use libsigrok_sys::sigrok::sr_keytype_SR_KEY_CONFIG;
 
 use crate::driver::Driver;
 use crate::types::ConfigOption;
 use crate::types::GVariantDataType;
-use crate::utils::garray_to_vec;
 use crate::utils::gslist_to_vec;
 
 use std::ffi::CStr;
@@ -347,7 +345,7 @@ impl Device {
         };
 
         let data: *mut GVariant = match option.data_type {
-            GVariantDataType::BOOL => {
+            GVariantDataType::Bool => {
                 let possible_true_values: Vec<&str> = vec!["true", "1", "on", "ok", "t"];
                 let possible_false_values: Vec<&str> = vec!["false", "0", "off", "f"];
                 let value: i32 = if possible_true_values.contains(&value.to_lowercase().as_str()) {
@@ -360,7 +358,7 @@ impl Device {
 
                 unsafe { glib::ffi::g_variant_new_boolean(value) }
             }
-            GVariantDataType::DOUBLE_RANGE | GVariantDataType::FLOAT => {
+            GVariantDataType::DoubleRange | GVariantDataType::Float => {
                 let value: Result<f64, std::num::ParseFloatError> = value.parse();
                 if value.is_err() {
                     return Err(SrError::SrInvalidOptionValue);
@@ -368,7 +366,7 @@ impl Device {
                 let value = value.expect("Value is not error");
                 unsafe { glib::ffi::g_variant_new_double(value) }
             }
-            GVariantDataType::INT32 => {
+            GVariantDataType::Int32 => {
                 let value: Result<i32, std::num::ParseIntError> = value.parse();
                 if value.is_err() {
                     return Err(SrError::SrInvalidOptionValue);
@@ -376,19 +374,19 @@ impl Device {
                 let value = value.expect("Value is not error");
                 unsafe { glib::ffi::g_variant_new_int32(value) }
             }
-            GVariantDataType::KEYVALUE => {
+            GVariantDataType::KeyValue => {
                 todo!()
             }
             GVariantDataType::MQ => {
                 todo!()
             }
-            GVariantDataType::RATIONAL_PERIOD | GVariantDataType::RATIONAL_VOLT => {
+            GVariantDataType::RationalPeriod | GVariantDataType::RationalVolt => {
                 todo!()
             }
-            GVariantDataType::STRING => unsafe {
+            GVariantDataType::String => unsafe {
                 glib::ffi::g_variant_new_string(CString::new(value.as_bytes()).unwrap().as_ptr())
             },
-            GVariantDataType::UINT64 | GVariantDataType::UINT64_RANGE => {
+            GVariantDataType::Uint64 | GVariantDataType::Uint64Range => {
                 let value: Result<u64, std::num::ParseIntError> = value.parse();
                 if value.is_err() {
                     return Err(SrError::SrInvalidOptionValue);
@@ -661,9 +659,8 @@ impl Channel {
     }
 }
 
+#[cfg(test)]
 mod tests {
-    use crate::types::{LogLevel, SrError::SrErr};
-
     use super::*;
 
     #[test]

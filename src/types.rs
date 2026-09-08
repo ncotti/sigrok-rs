@@ -4,15 +4,11 @@ use std::ptr::null;
 use std::{ffi::CStr, ptr::null_mut};
 
 use glib::ffi::GVariant;
-use libsigrok_sys::sigrok::{
-    self as sr, _GVariant, sr_configcap_SR_CONF_GET, sr_keytype_SR_KEY_CONFIG,
-};
+use libsigrok_sys::sigrok::{self as sr, sr_configcap_SR_CONF_GET, sr_keytype_SR_KEY_CONFIG};
 
-use libsigrok_sys::sigrok::{sr_configkey_SR_CONF_LOGIC_ANALYZER, sr_key_info};
 use thiserror::Error;
 
 use crate::sr_try;
-use crate::types::SrError::{SrErr, SrOptionNotExist};
 use crate::utils::garray_to_vec;
 
 /// Log level
@@ -175,7 +171,7 @@ impl ConfigOption {
             let data_type = GVariantDataType::try_from(key_info.datatype)?;
             let mut possible_values: Vec<String> = Vec::new();
 
-            if data_type == GVariantDataType::STRING {
+            if data_type == GVariantDataType::String {
                 let mut p_g_variant: *mut GVariant = null_mut();
                 let status = unsafe {
                     sr::sr_config_list(
@@ -221,25 +217,25 @@ impl ConfigOption {
                 ));
                 unsafe {
                     match data_type {
-                        GVariantDataType::BOOL => {
+                        GVariantDataType::Bool => {
                             glib::ffi::g_variant_get_boolean(gvar_value).to_string()
                         }
-                        GVariantDataType::DOUBLE_RANGE | GVariantDataType::FLOAT => {
+                        GVariantDataType::DoubleRange | GVariantDataType::Float => {
                             glib::ffi::g_variant_get_double(gvar_value).to_string()
                         }
-                        GVariantDataType::INT32 => {
+                        GVariantDataType::Int32 => {
                             glib::ffi::g_variant_get_int32(gvar_value).to_string()
                         }
-                        GVariantDataType::KEYVALUE | GVariantDataType::MQ => String::new(),
-                        GVariantDataType::RATIONAL_PERIOD | GVariantDataType::RATIONAL_VOLT => {
+                        GVariantDataType::KeyValue | GVariantDataType::MQ => String::new(),
+                        GVariantDataType::RationalPeriod | GVariantDataType::RationalVolt => {
                             String::new()
                         }
-                        GVariantDataType::STRING => {
+                        GVariantDataType::String => {
                             CStr::from_ptr(glib::ffi::g_variant_get_string(gvar_value, null_mut()))
                                 .to_string_lossy()
                                 .to_string()
                         }
-                        GVariantDataType::UINT64 | GVariantDataType::UINT64_RANGE => {
+                        GVariantDataType::Uint64 | GVariantDataType::Uint64Range => {
                             glib::ffi::g_variant_get_uint64(gvar_value).to_string()
                         }
                     }
@@ -267,17 +263,18 @@ impl ConfigOption {
 /// pub const sr_datatype_SR_T_UINT64: sr_datatype = 10000;
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[allow(missing_docs)]
 pub enum GVariantDataType {
-    UINT64 = 10000,
-    STRING = 10001,
-    BOOL = 10002,
-    FLOAT = 10003,
-    RATIONAL_PERIOD = 10004,
-    RATIONAL_VOLT = 10005,
-    KEYVALUE = 10006,
-    UINT64_RANGE = 10007,
-    DOUBLE_RANGE = 10008,
-    INT32 = 10009,
+    Uint64 = 10000,
+    String = 10001,
+    Bool = 10002,
+    Float = 10003,
+    RationalPeriod = 10004,
+    RationalVolt = 10005,
+    KeyValue = 10006,
+    Uint64Range = 10007,
+    DoubleRange = 10008,
+    Int32 = 10009,
     MQ = 10010,
 }
 
@@ -286,22 +283,23 @@ impl TryFrom<i32> for GVariantDataType {
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            10000 => Ok(GVariantDataType::UINT64),
-            10001 => Ok(GVariantDataType::STRING),
-            10002 => Ok(GVariantDataType::BOOL),
-            10003 => Ok(GVariantDataType::FLOAT),
-            10004 => Ok(GVariantDataType::RATIONAL_PERIOD),
-            10005 => Ok(GVariantDataType::RATIONAL_VOLT),
-            10006 => Ok(GVariantDataType::KEYVALUE),
-            10007 => Ok(GVariantDataType::UINT64_RANGE),
-            10008 => Ok(GVariantDataType::DOUBLE_RANGE),
-            10009 => Ok(GVariantDataType::INT32),
+            10000 => Ok(GVariantDataType::Uint64),
+            10001 => Ok(GVariantDataType::String),
+            10002 => Ok(GVariantDataType::Bool),
+            10003 => Ok(GVariantDataType::Float),
+            10004 => Ok(GVariantDataType::RationalPeriod),
+            10005 => Ok(GVariantDataType::RationalVolt),
+            10006 => Ok(GVariantDataType::KeyValue),
+            10007 => Ok(GVariantDataType::Uint64Range),
+            10008 => Ok(GVariantDataType::DoubleRange),
+            10009 => Ok(GVariantDataType::Int32),
             10010 => Ok(GVariantDataType::MQ),
             _ => Err(SrError::SrErrNA),
         }
     }
 }
 
+/// Device type
 #[derive(Debug, Clone, Copy)]
 #[repr(u32)]
 pub enum DeviceType {
@@ -335,4 +333,43 @@ pub enum DeviceType {
     SignalGenerator = 10013,
     /// The device can measure power.
     PowerMeter = 10014,
+}
+
+/// Packet Type
+#[derive(Debug, Clone, Copy)]
+pub enum PacketType {
+    /// Payload is sr_datafeed_header.
+    Header = 10000,
+    /// End of stream (no further data).
+    End = 10001,
+    /// Payload is struct sr_datafeed_meta
+    Meta = 10002,
+    /// The trigger matched at this point in the data feed. No payload.
+    Trigger = 10003,
+    /// Payload is struct sr_datafeed_logic.
+    Logic = 10004,
+    /// Beginning of frame. No payload.
+    FrameBegin = 10005,
+    /// End of frame. No payload.
+    FrameEnd = 10006,
+    /// Payload is struct sr_datafeed_analog.
+    Analog = 10007,
+}
+
+impl TryFrom<u16> for PacketType {
+    type Error = SrError;
+
+    fn try_from(value: u16) -> Result<Self, SrError> {
+        match value {
+            10000 => Ok(PacketType::Header),
+            10001 => Ok(PacketType::End),
+            10002 => Ok(PacketType::Meta),
+            10003 => Ok(PacketType::Trigger),
+            10004 => Ok(PacketType::Logic),
+            10005 => Ok(PacketType::FrameBegin),
+            10006 => Ok(PacketType::FrameEnd),
+            10007 => Ok(PacketType::Analog),
+            _ => Err(SrError::SrErrNA),
+        }
+    }
 }

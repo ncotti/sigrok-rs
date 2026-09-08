@@ -1,8 +1,7 @@
 use std::ptr::null_mut;
 
 use sigrok_rs::device::Device;
-use sigrok_rs::trigger::TriggerEvent;
-use sigrok_rs::{input_module::InputModule, output_module::OutputModule, types::SrError, *};
+use sigrok_rs::types::SrError;
 
 use libsigrok_sys::sigrok::{self as sr, sr_context};
 
