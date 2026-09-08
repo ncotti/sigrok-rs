@@ -77,7 +77,7 @@ impl Session {
         let session = Self {
             context: context,
             session: session,
-            device: Device::default(),
+            device: Device::try_from(("demo", context))?,
         };
 
         Ok(session)

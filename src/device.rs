@@ -29,7 +29,7 @@ use crate::types::SrError;
 /// A device has a driver to communicate with it, configuration options,
 /// and an arbitrary number of `channel_groups` that hold `channels`
 /// from where data is read.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Device {
     /// Driver used to handle with the device.
     driver: Driver,

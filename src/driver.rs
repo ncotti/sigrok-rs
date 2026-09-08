@@ -1,10 +1,11 @@
 //! Drivers
 //!
-//! Any device has a driver associated, which is used to interact with it.
+//! Any hardware device has a driver associated,
+//! which is used to interact with it.
 
-use libsigrok_sys::sigrok::{self as sr, GSList, sr_dev_inst};
+use libsigrok_sys::sigrok as sr;
 
-use sr::{sr_context, sr_dev_driver};
+use sr::{GSList, sr_context, sr_dev_driver, sr_dev_inst};
 
 use std::ffi::CStr;
 use std::fmt::Display;
@@ -14,15 +15,14 @@ use crate::sr_try;
 use crate::types::SrError;
 use crate::utils::gslist_to_vec;
 
-/// Sigrok's drivers for all devices.
+/// Sigrok's drivers for hardware devices.
 ///
 /// Before being able to connect to any device, a driver structure must
 /// be created and used to search for the device. Only a
-/// matching pair of (driver, device) can communicate with each other.
-/// TODO, remove "Default"
-#[derive(Clone, Default, Debug)]
+/// matching (driver, device) pair can communicate between each other.
+#[derive(Clone, Debug)]
 pub struct Driver {
-    /// Raw C pinter to the device driver.
+    /// Raw C-FFI pointer to the device driver.
     p_driver: *mut sr_dev_driver,
     /// Driver's name.
     name: String,
@@ -39,7 +39,7 @@ impl Display for Driver {
 impl TryFrom<*mut sr_dev_driver> for Driver {
     type Error = SrError;
 
-    /// Creates a new Driver struct from a FFI C `sr_dev_driver` pointer.
+    /// Creates a new Driver struct from a C-FFI `sr_dev_driver` pointer.
     fn try_from(p_driver: *mut sr_dev_driver) -> Result<Self, SrError> {
         if p_driver == null_mut() {
             return Err(SrError::SrNull);
@@ -62,7 +62,7 @@ impl Driver {
     /// Returns the list of available drivers for any device.
     ///
     /// * `context`: A sigrok session context. A `Session` struct must first be
-    /// created, and then use its `Session.get_context()` as argument.
+    /// created, and then use its `Session.get_context()` as the argument.
     pub fn list(context: *const sr_context) -> Result<Vec<Driver>, SrError> {
         if context == null() {
             return Err(SrError::SrNull);
@@ -83,7 +83,7 @@ impl Driver {
     }
 
     /// Scans for plugged devices that can be handled with the given driver,
-    /// and returns a list of the raw C FFI pointers.
+    /// and returns a list of the raw C-FFI pointers.
     pub fn scan_for_devices(
         &self,
         context: *mut sr_context,
@@ -95,7 +95,7 @@ impl Driver {
 
         let p_devices: Vec<*mut sr_dev_inst> = gslist_to_vec(device_list);
 
-        //unsafe { glib::ffi::g_slist_free(device_list.cast()) };
+        unsafe { glib::ffi::g_slist_free(device_list.cast()) };
 
         Ok(p_devices)
     }
