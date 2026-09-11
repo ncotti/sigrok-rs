@@ -2,27 +2,23 @@
 
 use glib::ffi::GVariant;
 use libsigrok_sys::sigrok as sr;
-use libsigrok_sys::sigrok::sr_channel_group;
-use libsigrok_sys::sigrok::sr_dev_driver;
+
+use sr::{GSList, sr_channel, sr_channel_group, sr_context, sr_dev_driver, sr_dev_inst};
 
 use crate::driver::Driver;
 use crate::types::ConfigOption;
 use crate::types::GVariantDataType;
 use crate::utils::gslist_to_vec;
 
-use std::ffi::CStr;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::fmt::Display;
-use std::ptr::null;
-use std::ptr::null_mut;
-
-use sr::{GSList, sr_channel, sr_context, sr_dev_inst};
+use std::ptr::{null, null_mut};
 
 use crate::sr_try;
 use crate::types::ChannelType;
 use crate::types::SrError;
 
-/// A device can be though as any lab instrument which is capable of
+/// A device can be thought as any lab instrument capable of
 /// measuring something. E.g.: Logic analyzers, oscilloscopes, multimeters,
 /// thermometers, etc.
 ///
@@ -31,9 +27,9 @@ use crate::types::SrError;
 /// from where data is read.
 #[derive(Debug)]
 pub struct Device {
-    /// Driver used to handle with the device.
+    /// Driver used to handle the device.
     driver: Driver,
-    /// Raw C FFI pointer to the device's instance.
+    /// Raw C-FFI pointer to the device's instance.
     p_device: *mut sr_dev_inst,
     /// Vendor string. May be empty.
     vendor: String,
@@ -48,9 +44,14 @@ pub struct Device {
     /// A typical value would be something like "usb/5-1.2.2", which
     /// corresponds to the "sysfs" path at `/sys/bus/usb/devices/5-1.2.2`.
     connection_id: String,
-    /// Device-wide configuration options
+    /// Device-wide configuration options.
     options: Vec<ConfigOption>,
-    /// channel groups
+    /// Channel groups.
+    ///
+    /// All channels must be within a group, whose sole purpose is to store
+    /// common configuration between them.
+    /// Although most devices only have a single group, some devices may have,
+    /// for example, digital and analog channels.
     channel_groups: Vec<ChannelGroup>,
 }
 
@@ -127,7 +128,7 @@ impl Display for Device {
 }
 
 impl Device {
-    /// Returns the list of all discovered devices currently plugged to the PC.
+    /// Returns all discovered devices currently plugged to the PC.
     ///
     /// The "demo" device is always discovered, so the returned vector will
     /// never be empty.
@@ -198,7 +199,8 @@ impl Device {
                 .to_string()
         };
 
-        let config_options = ConfigOption::scan(driver.get_pointer(), p_device, null())?;
+        let config_options: Vec<ConfigOption> =
+            ConfigOption::scan(driver.get_pointer(), p_device, null())?;
 
         let dev = Device {
             driver: driver.clone(),
@@ -216,7 +218,12 @@ impl Device {
         Ok(dev)
     }
 
-    pub fn open(&self) -> Result<(), SrError> {
+    /// Open the device. Most operations, like changing a configuration or
+    /// reading data, can't be done if the device is not opened.
+    ///
+    /// This functions will not return an error if the device was already
+    /// opened.
+    fn open(&self) -> Result<(), SrError> {
         let status = unsafe { sr::sr_dev_open(self.p_device) };
         let status = SrError::from(status);
         match status {
@@ -260,26 +267,46 @@ impl Device {
         self.driver.get_name()
     }
 
-    /// Returns the device's channel whose index matches the argument.
-    pub fn get_channel_by_index(&self, index: i32) -> Option<&Channel> {
-        self.channel_groups[0]
-            .channels
-            .iter()
-            .find(|channel| channel.index == index)
+    /// Returns the device's channel whose name or index matches the argument `id`.
+    ///
+    /// * `id`: Either the channel's name, or the channel index, as a String.
+    pub fn get_channel(&self, id: &str) -> Result<&Channel, SrError> {
+        for group in &self.channel_groups {
+            let channel = group
+                .channels
+                .iter()
+                .find(|channel| channel.name == id || channel.index.to_string() == id);
+
+            if channel.is_some() {
+                return Ok(channel.unwrap());
+            }
+        }
+        Err(SrError::SrChannelNotFound)
     }
 
-    /// Returns the device's channel whose name matches the argument.
-    pub fn get_channel_by_name(&self, name: String) -> Option<&Channel> {
-        self.channel_groups[0]
-            .channels
-            .iter()
-            .find(|channel| channel.name == name)
+    /// Returns a mutable reference to the device's channel whose
+    /// name or index matches the argument `id`.
+    ///
+    /// * `id`: Either the channel's name, or the channel index, as a String.
+    pub fn get_channel_mut(&mut self, id: &str) -> Result<&mut Channel, SrError> {
+        for group in &mut self.channel_groups {
+            let channel = group
+                .channels
+                .iter_mut()
+                .find(|channel| channel.name == id || channel.index.to_string() == id);
+
+            if channel.is_some() {
+                return Ok(channel.unwrap());
+            }
+        }
+        Err(SrError::SrChannelNotFound)
     }
 
     /// Compares the given value with the device's vendor, model, version,
     /// serial number and connection ID, and also its driver name.
     ///
     /// Returns `true` if any of them match.
+    /// TODO
     pub fn find(&self, value: impl AsRef<str>) -> bool {
         let value: &str = value.as_ref();
 
@@ -296,16 +323,40 @@ impl Device {
             || (value == self.driver.get_long_name())
     }
 
+    /// Sets the option `id` for the given `channel_group_name` to the given
+    /// `value`.
+    ///
+    /// * `channel_group_name`: Channel group name. This function will return
+    /// the error `SrError::SrErrChannelGroup` if it can't be found.
+    ///
+    /// * `id`: The option's ID.
+    ///
+    /// * "value": The value for the given `id`. Although this functions
+    /// receives a string as argument, the value must be parseable to the
+    /// option's datatype, or an error `SrError::SrInvalidOptionValue` will be
+    /// returned.
     pub fn set_channel_option(
         &mut self,
         channel_group_name: &str,
         id: &str,
         value: &str,
     ) -> Result<(), SrError> {
-        self.set_option(format!("{} {}", channel_group_name, id).as_str(), value)?;
-        Ok(())
+        self.set_option(format!("{} {}", channel_group_name, id).as_str(), value)
     }
 
+    /// Sets the option `id` to the given `value`.
+    ///
+    /// * `id`: If the string `"<option_id>"` is given, this function assumes
+    /// that it is a device option or it may be channel group option if the
+    /// device has a single channel group. If the device has multiple channel
+    /// groups, their options can be set by passing a two word string formed
+    /// by the channel group name and the option's id as such:
+    /// `"<channel_group_name> <option_id>"`.
+    ///
+    /// * "value": The value for the given `id`. Although this functions
+    /// receives a string as argument, the value must be parseable to the
+    /// option's datatype, or an error `SrError::SrInvalidOptionValue` will be
+    /// returned.
     pub fn set_option(&mut self, id: &str, value: &str) -> Result<(), SrError> {
         let option = self.options.iter_mut().find(|o| o.id == id);
 
@@ -409,14 +460,35 @@ impl Device {
         Ok(())
     }
 
+    /// Returns the current value of the given option `id`, which belongs to
+    /// the `channel_group_name`.
+    ///
+    /// * `channel_group_name`: Channel group name. This function will return
+    /// the error `SrError::SrErrChannelGroup` if it can't be found.
+    ///
+    /// * `id`: The option's ID.
+    ///
+    /// The returned value will always be a String, and its the user's
+    /// responsibility to parse it to the correct data type.
     pub fn get_channel_option(
         &self,
         channel_group_name: &str,
         id: &str,
     ) -> Result<&String, SrError> {
-        Ok(self.get_option(format!("{} {}", channel_group_name, id).as_str())?)
+        self.get_option(format!("{} {}", channel_group_name, id).as_str())
     }
 
+    /// Returns the current value of the given option `id`.
+    ///
+    /// * `id`: If the string `"<option_id>"` is given, this function assumes
+    /// that it is a device option or it may be channel group option if the
+    /// device has a single channel group. If the device has multiple channel
+    /// groups, their options can be set by passing a two word string formed
+    /// by the channel group name and the option's id as such:
+    /// `"<channel_group_name> <option_id>"`.
+    ///
+    /// The returned value will always be a String, and its the user's
+    /// responsibility to parse it to the correct data type.
     pub fn get_option(&self, id: &str) -> Result<&String, SrError> {
         let option = self.options.iter().find(|o| o.id == id);
 
@@ -454,63 +526,43 @@ impl Device {
         Ok(&option.value)
     }
 
-    pub fn enable_channel(&mut self, name: &str) -> Result<(), SrError> {
-        for group in &mut self.channel_groups {
-            for channel in &mut group.channels {
-                if channel.get_name() == name || channel.get_index().to_string() == name {
-                    sr_try!(sr::sr_dev_channel_enable(channel.get_pointer(), 1));
-                    channel.enabled = true;
-                    return Ok(());
-                }
-            }
-        }
-        Err(SrError::SrChannelNotFound)
+    /// Enables or disables the given channel.
+    pub fn enable_channel(&mut self, name: &str, enable: bool) -> Result<(), SrError> {
+        let channel = self.get_channel_mut(name)?;
+        sr_try!(sr::sr_dev_channel_enable(
+            channel.get_pointer(),
+            enable as i32
+        ));
+        channel.enabled = enable;
+        Ok(())
     }
 
-    pub fn disable_channel(&mut self, name: &str) -> Result<(), SrError> {
-        for group in &mut self.channel_groups {
-            for channel in &mut group.channels {
-                if channel.get_name() == name || channel.get_index().to_string() == name {
-                    sr_try!(sr::sr_dev_channel_enable(channel.get_pointer(), 0));
-                    channel.enabled = false;
-                    return Ok(());
-                }
-            }
-        }
-        Err(SrError::SrChannelNotFound)
-    }
-
+    /// Returns "true" if the channel is enabled.
     pub fn is_channel_enabled(&self, name: &str) -> Result<bool, SrError> {
-        for group in &self.channel_groups {
-            for channel in &group.channels {
-                if channel.get_name() == name || channel.get_index().to_string() == name {
-                    return Ok(channel.enabled);
-                }
-            }
-        }
-        Err(SrError::SrChannelNotFound)
+        let channel = self.get_channel(name)?;
+        Ok(channel.enabled)
     }
 
+    /// Changes the channel's name from `old_name` to `new_name`.
+    ///
+    /// * `old_name`: The channel's current name or index number, as a string.
+    /// * `new_name`: The channel's new name.
     pub fn set_channel_name(&mut self, old_name: &str, new_name: &str) -> Result<(), SrError> {
-        for group in &mut self.channel_groups {
-            for channel in &mut group.channels {
-                if channel.get_name() == old_name || channel.get_index().to_string() == old_name {
-                    sr_try!(sr::sr_dev_channel_name_set(
-                        channel.get_pointer(),
-                        new_name.as_ptr().cast()
-                    ));
-                    channel.name = new_name.to_string();
-                    return Ok(());
-                }
-            }
-        }
-        Err(SrError::SrChannelNotFound)
+        let channel = self.get_channel_mut(old_name)?;
+        sr_try!(sr::sr_dev_channel_name_set(
+            channel.get_pointer(),
+            new_name.as_ptr().cast()
+        ));
+        channel.name = new_name.to_string();
+        Ok(())
     }
 }
 
 impl TryFrom<(&str, *mut sr_context)> for Device {
     type Error = SrError;
 
+    /// Connects a `Device` from a `value` string, which may match the device's
+    /// vendor, model, serial number or driver name.
     fn try_from(value: (&str, *mut sr_context)) -> Result<Self, Self::Error> {
         let devices = Device::scan(value.1)?;
         let expected_device = devices.into_iter().find(|dev| {
@@ -527,27 +579,24 @@ impl TryFrom<(&str, *mut sr_context)> for Device {
     }
 }
 
-/// A channel group holds an arbitrary amount data channels from a
-/// device, and groups common characteristics between them.
-///
-/// A typical separation comes from having digital and analog channel
-/// groups in the same device.
+/// A channel group holds an arbitrary amount of data channels from a
+/// device and their characteristics.
 #[derive(Debug)]
-pub struct ChannelGroup {
-    /// Raw C-FFI pointer to the channel group
-    pub p_group: *mut sr_channel_group,
+struct ChannelGroup {
+    /// Raw C-FFI pointer.
+    p_group: *mut sr_channel_group,
     /// Arbitrary name given to the channel group.
-    pub name: String,
+    name: String,
     /// Channels that form part of the given group.
-    pub channels: Vec<Channel>,
+    channels: Vec<Channel>,
     /// Configuration options that only apply to this group of channels, not
     /// the whole device. It may be empty.
-    pub options: Vec<ConfigOption>,
+    options: Vec<ConfigOption>,
 }
 
 impl ChannelGroup {
     /// Returns all channel groups from a device.
-    pub fn scan(
+    fn scan(
         p_device: *mut sr_dev_inst,
         p_driver: *const sr_dev_driver,
     ) -> Result<Vec<ChannelGroup>, SrError> {
@@ -588,27 +637,31 @@ impl ChannelGroup {
     }
 }
 
-/// A Channel represents a reading stream.
+/// Hardware data channel.
+///
+/// A channel represents a reading stream, from where data is continuously
+/// available.
 #[derive(Debug)]
 pub struct Channel {
-    /// Raw FFI C pointer to the channel struct
+    /// Raw C-FFI pointer
     p_channel: *mut sr_channel,
-    /// Name of the channel. E.g. "D0", "D1", "A0", etc.
+    /// Name of the channel. E.g. "D0", "D1", "A0", etc. It may be used to
+    /// reference it.
     name: String,
+    /// Index of the channel. It may be used to reference it.
+    index: i32,
     /// Whether the channel is enabled, i.e., will read data when the session
     /// starts, or not.
     enabled: bool,
-    /// Index of the channel. This value is used to reference it if needed.
-    index: i32,
     /// Channel type, either digital or analog.
     channel_type: ChannelType,
 }
 
 impl Channel {
-    /// Creates a new Channel struct from a raw FFI C `sr_channel` pointer.
+    /// Creates a new Channel struct from a raw C-FFI `sr_channel` pointer.
     ///
     /// This function will panic! if `p_channel` is NULL.
-    pub fn new(p_channel: *mut sr_channel) -> Self {
+    fn new(p_channel: *mut sr_channel) -> Self {
         if p_channel == null_mut() {
             panic!("Channel::new(), p_channel was NULL");
         }
@@ -622,25 +675,6 @@ impl Channel {
             index: channel.index,
             channel_type: ChannelType::from(channel.type_),
         }
-    }
-
-    /// Returns a vector holding all the listed channels for the given device.
-    pub fn get_channels(p_device: *const sr_dev_inst) -> Vec<Self> {
-        let mut channels: Vec<Channel> = Vec::new();
-
-        let channel_list: *mut GSList = unsafe { sr::sr_dev_inst_channels_get(p_device) };
-        let mut channel_node: *mut GSList = channel_list;
-
-        while channel_node != null_mut() {
-            let p_channel: *mut sr_channel = unsafe { *channel_node }.data.cast();
-
-            channels.push(Channel::new(p_channel));
-            channel_node = unsafe { *channel_node }.next;
-        }
-
-        // unsafe { glib::ffi::g_slist_free(channel_list.cast()) };
-
-        channels
     }
 
     /// Returns the raw FFI C pointer to the channel struct.
@@ -756,11 +790,11 @@ mod tests {
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
 
-        demo_device.enable_channel("3")?;
+        demo_device.enable_channel("3", true)?;
         assert!(demo_device.is_channel_enabled("3")?);
-        demo_device.disable_channel("3")?;
+        demo_device.enable_channel("3", false)?;
         assert!(!demo_device.is_channel_enabled("D3")?);
-        demo_device.enable_channel("D3")?;
+        demo_device.enable_channel("D3", true)?;
         assert!(demo_device.is_channel_enabled("3")?);
 
         let result = demo_device.is_channel_enabled("abcdef");

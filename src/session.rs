@@ -100,7 +100,7 @@ impl Session {
     pub fn set_trigger(&self, event: TriggerEvent) -> Result<(), SrError> {
         let trigger: Trigger = Trigger::new(
             String::from("name"),
-            self.device.get_channel_by_index(0).unwrap(),
+            self.device.get_channel("0").unwrap(),
             event,
         )?;
         sr_try!(sr::sr_session_trigger_set(
@@ -118,7 +118,6 @@ impl Session {
             Some(Session::my_callback),
             null_mut()
         ));
-        self.device.open().unwrap_or_else(|_e| {});
         sr_try!(sr::sr_session_start(self.session));
         unsafe {
             let main_loop = glib::ffi::g_main_loop_new(0x0 as *mut _, 0);
