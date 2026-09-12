@@ -51,10 +51,12 @@ impl fmt::Display for HeaderPacket {
 /// each bit the logical state of each channel, ordered by channel index,
 /// as such:
 ///
+/// ```txt
 ///         D7 D6 D5 D4 D3 D2 D1 D0
-// 0x0E      0  0  0  0  1  1  1  0
-// 0xF6      1  1  1  1  0  1  1  0
-// 0xD2      1  1  0  1  0  0  1  0
+/// 0x0E     0  0  0  0  1  1  1  0
+/// 0xF6     1  1  1  1  0  1  1  0
+/// 0xD2     1  1  0  1  0  0  1  0
+/// ```
 pub struct LogicPacket {
     /// Logic data from each logic channel, up to 16 channels
     data: Vec<u8>,

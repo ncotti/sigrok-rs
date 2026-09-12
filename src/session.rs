@@ -1,13 +1,19 @@
 //! Session
 
-use std::ptr::{null, null_mut};
+use std::{
+    ffi::{CStr, c_void},
+    fs::OpenOptions,
+    io::Write,
+    ptr::{null, null_mut},
+};
 
-use glib::LogLevel;
-use libsigrok_sys::sigrok::{self as sr, sr_datafeed_packet, sr_dev_inst};
+use glib::{LogLevel, ffi::GString};
+use libsigrok_sys::sigrok::{self as sr, _GString, sr_datafeed_packet, sr_dev_inst, sr_output};
 
 use crate::{
     Device, SrError,
-    packets::{HeaderPacket, LogicPacket},
+    output_module::OutputModule,
+    packets::HeaderPacket,
     sr_try,
     trigger::{Trigger, TriggerEvent},
     types::PacketType,
@@ -29,7 +35,8 @@ pub struct Session {
     /// per session.
     device: Device,
     // input: InputModule,
-    // output: OutputModule,
+    /// Output module
+    output: OutputModule,
 }
 
 impl Drop for Session {
@@ -60,7 +67,6 @@ impl TryFrom<&str> for Session {
         }
 
         session.device = device.unwrap();
-        session.device.open()?;
 
         sr_try!(sr::sr_session_dev_add(
             session.p_session,
@@ -90,7 +96,8 @@ impl TryFrom<String> for Session {
 impl Session {
     /// Creates a new "empty" session.
     ///
-    /// The returned Session object will be plugged to the "demo" device.
+    /// The returned Session object will be plugged to the "demo" device, and
+    /// with a "null" output module.
     fn new() -> Result<Self, SrError> {
         sr_try!(sr::sr_log_callback_set_default());
 
@@ -100,10 +107,15 @@ impl Session {
         let mut p_session: *mut sr_session = null_mut();
         sr_try!(sr::sr_session_new(p_context, &mut p_session));
 
+        let device = Device::try_from(("demo", p_context))?;
+
+        let output = OutputModule::new("null", "tmp", device.get_pointer())?;
+
         let session = Self {
             p_context: p_context,
             p_session: p_session,
-            device: Device::try_from(("demo", p_context))?,
+            device: device,
+            output: output,
         };
 
         Ok(session)
@@ -155,14 +167,10 @@ impl Session {
         sr_try!(sr::sr_session_datafeed_callback_add(
             self.p_session,
             Some(Session::my_callback),
-            null_mut()
+            self.output.get_pointer().cast_mut().cast(),
         ));
         sr_try!(sr::sr_session_start(self.p_session));
         sr_try!(sr::sr_session_run(self.p_session));
-        // unsafe {
-        //     let main_loop = glib::ffi::g_main_loop_new(0x0 as *mut _, 0);
-        //     glib::ffi::g_main_loop_run(main_loop);
-        // };
         self.stop()?;
         Ok(())
     }
@@ -170,7 +178,7 @@ impl Session {
     /// Runs the session for `timeout` time and blocks until the time passes.
     ///
     /// Timing is not precise, and the session may run for more or less time.
-    pub fn run_timeout(&self, timeout: Duration) -> Result<(), SrError> {
+    pub fn run_timeout(&mut self, timeout: Duration) -> Result<(), SrError> {
         self.start()?;
         thread::sleep(timeout);
         self.stop()?;
@@ -178,11 +186,13 @@ impl Session {
     }
 
     /// Starts the session in a new thread.
-    pub fn start(&self) -> Result<(), SrError> {
+    pub fn start(&mut self) -> Result<(), SrError> {
+        let cb_data: *mut c_void = (&mut self.output) as *mut OutputModule as *mut c_void;
         sr_try!(sr::sr_session_datafeed_callback_add(
             self.p_session,
             Some(Session::my_callback),
-            null_mut()
+            //self.output.get_pointer().cast_mut().cast(),
+            cb_data,
         ));
         sr_try!(sr::sr_session_stopped_callback_set(
             self.p_session,
@@ -225,7 +235,40 @@ impl Session {
             return;
         }
 
+        //let output: *const sr_output = cb_data.cast();
+        let output: &mut OutputModule = unsafe { &mut *(cb_data as *mut OutputModule) };
+
+        // TODO the problem is here
+        let mut p_gstring: *mut _GString = null_mut();
+        assert!(
+            SrError::SrOk as i32
+                == unsafe {
+                    sr::sr_output_send(
+                        output.get_pointer(),
+                        packet,
+                        std::ptr::addr_of_mut!(p_gstring),
+                    )
+                }
+        );
+
+        if p_gstring != null_mut() {
+            let gstring = unsafe { *p_gstring };
+            if gstring.len > 0 {
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&output.filename)
+                    .unwrap();
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(gstring.str_ as *const u8, gstring.len as usize)
+                };
+                file.write_all(bytes).unwrap();
+            }
+            unsafe { glib::ffi::g_string_free(p_gstring as *mut GString, 1) };
+        }
+
         let packet = unsafe { *packet };
+
         let packet_type = PacketType::try_from(packet.type_).unwrap();
 
         match packet_type {
@@ -236,18 +279,24 @@ impl Session {
             PacketType::Meta => {}
             PacketType::Trigger => {}
             PacketType::Logic => {
-                println!("{}", LogicPacket::from(packet.payload));
+                //println!("{}", LogicPacket::from(packet.payload));
             }
             PacketType::FrameBegin => {}
             PacketType::FrameEnd => {}
             PacketType::Analog => {}
         };
     }
+
+    pub fn set_output(&mut self, id: &str, filename: &str) -> Result<(), SrError> {
+        self.output = OutputModule::new(id, filename, self.device.get_pointer())?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{config_option::MeasuredQuantityFlag::Duration};
+    use std::time::Duration;
+    use tempfile::NamedTempFile;
 
     use super::*;
 
@@ -261,18 +310,40 @@ mod tests {
         Ok(())
     }
 
-    // #[test]
-    // fn test_run_timed() -> Result<(), SrError> {
-    //     let session = Session::try_from("demo")?;
+    #[test]
+    fn test_start_and_stop() -> Result<(), SrError> {
+        let mut session = Session::try_from("demo")?;
 
-    //     session.run_timed(std::time::Duration::from_secs(1))?;
-    //     Ok(())
-    // }
+        session.start()?;
+        session.stop()?;
 
-    // #[test]
-    // fn test_run_limited_samples() -> Result<(), SrError> {
-    //     let session = Session::try_from("demo")?;
+        Ok(())
+    }
 
-    //     Ok(())
-    // }
+    #[test]
+    fn test_ascii_output() -> Result<(), SrError> {
+        //let mut tmp_file =  NamedTempFile::new().unwrap();
+        let tmp_file = "tmp.txt";
+
+        let mut session = Session::try_from("demo")?;
+        session.set_output("hex", tmp_file)?;
+        session.run_timeout(Duration::from_millis(1000))?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_run_timeout() -> Result<(), SrError> {
+        let mut session = Session::try_from("demo")?;
+
+        session.run_timeout(std::time::Duration::from_secs(1))?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_run_limited_samples() -> Result<(), SrError> {
+        let session = Session::try_from("demo")?;
+
+        Ok(())
+    }
 }

@@ -55,6 +55,8 @@ pub enum SrError {
     SrInvalidOptionValue = -15,
     #[error("Channel name of index not found")]
     SrChannelNotFound = -16,
+    #[error("Module not found")]
+    SrNotFound = -17,
 }
 
 impl From<i32> for SrError {
@@ -77,6 +79,7 @@ impl From<i32> for SrError {
             -14 => SrError::SrOptionNotExist,
             -15 => SrError::SrInvalidOptionValue,
             -16 => SrError::SrChannelNotFound,
+            -17 => SrError::SrNotFound,
             _ => SrError::SrErrNA,
         }
     }

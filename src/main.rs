@@ -1,8 +1,7 @@
 use std::time::Duration;
 
+use sigrok_rs::session::Session;
 use sigrok_rs::types::SrError;
-use sigrok_rs::{session::Session};
-
 
 fn main() -> Result<(), SrError> {
     // println!(
@@ -22,7 +21,7 @@ fn main() -> Result<(), SrError> {
     //let session = Session::try_from("fx2lafw").unwrap();
     // //session.set_trigger(TriggerEvent::One)?;
 
-    let session = Session::try_from("demo").unwrap();
+    let mut session = Session::try_from("demo").unwrap();
     session.run_timeout(Duration::from_secs(1))?;
 
     Ok(())
