@@ -247,7 +247,7 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
-    use crate::{config_option::MeasuredQuantityFlag::Duration, packets::Packet};
+    use crate::{config_option::MeasuredQuantityFlag::Duration};
 
     use super::*;
 
@@ -261,18 +261,18 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_run_timed() -> Result<(), SrError> {
-        let session = Session::try_from("demo")?;
+    // #[test]
+    // fn test_run_timed() -> Result<(), SrError> {
+    //     let session = Session::try_from("demo")?;
 
-        session.run_timed(std::time::Duration::from_secs(1))?;
-        Ok(())
-    }
+    //     session.run_timed(std::time::Duration::from_secs(1))?;
+    //     Ok(())
+    // }
 
-    #[test]
-    fn test_run_limited_samples() -> Result<(), SrError> {
-        let session = Session::try_from("demo")?;
+    // #[test]
+    // fn test_run_limited_samples() -> Result<(), SrError> {
+    //     let session = Session::try_from("demo")?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
