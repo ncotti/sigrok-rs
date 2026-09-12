@@ -2,6 +2,7 @@
 
 #![warn(missing_docs)]
 
+pub mod config_option;
 pub mod device;
 pub mod driver;
 pub mod input_module;

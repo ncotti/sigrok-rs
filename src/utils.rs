@@ -3,11 +3,17 @@
 //!
 //!
 
-use std::ptr::null_mut;
+use std::{ffi::CStr, ptr::null_mut};
 
-use libsigrok_sys::sigrok::{self as sr, GArray};
+use glib::ffi::GVariant;
+use libsigrok_sys::sigrok as sr;
 
-use sr::GSList;
+use sr::{GArray, GSList};
+
+use crate::{
+    config_option::{GVariantDataType, MeasuredQuantity, MeasuredQuantityFlag},
+    types::SrError,
+};
 
 /// Converts a `GSList` type to a Rust `Vec<*mut T>` type.
 /// The returned vector may be empty.
@@ -69,4 +75,87 @@ pub fn garray_to_vec<T: Copy>(array: *mut GArray) -> Vec<T> {
     }
 
     output
+}
+
+/// Extract the value from a GVariant to a String
+///
+/// GVariant is a variable that can hold any type. This function will try to
+/// read the value within and return it as a String.
+pub fn gvariant_to_string(
+    data_type: GVariantDataType,
+    gvar: *mut GVariant,
+) -> Result<String, SrError> {
+    Ok(match data_type {
+        GVariantDataType::Bool => unsafe { glib::ffi::g_variant_get_boolean(gvar) }.to_string(),
+        GVariantDataType::Float => unsafe { glib::ffi::g_variant_get_double(gvar) }.to_string(),
+        GVariantDataType::DoubleRange => {
+            todo!()
+        }
+        GVariantDataType::Int32 => unsafe { glib::ffi::g_variant_get_int32(gvar) }.to_string(),
+        GVariantDataType::KeyValue => {
+            todo!()
+        }
+        GVariantDataType::MQ => {
+            let mq_type: *mut GVariant = unsafe { glib::ffi::g_variant_get_child_value(gvar, 0) };
+            let mq_flag: *mut GVariant = unsafe { glib::ffi::g_variant_get_child_value(gvar, 1) };
+
+            let mq_type = unsafe { glib::ffi::g_variant_get_uint32(mq_type) };
+            let mq_flag = unsafe { glib::ffi::g_variant_get_uint64(mq_flag) };
+
+            let mq_type = MeasuredQuantity::try_from(mq_type as i32)?.as_str();
+            let mq_flag = MeasuredQuantityFlag::try_from(mq_flag)?.as_str();
+            format!("{}, {}", mq_type, mq_flag)
+        }
+        GVariantDataType::RationalPeriod | GVariantDataType::RationalVolt => {
+            todo!()
+        }
+        GVariantDataType::String => {
+            unsafe { CStr::from_ptr(glib::ffi::g_variant_get_string(gvar, null_mut())) }
+                .to_string_lossy()
+                .to_string()
+        }
+        GVariantDataType::Uint64 => {
+            let gvar_type = gvariant_type_string(gvar);
+            if gvar_type == "t" {
+                unsafe { glib::ffi::g_variant_get_uint64(gvar) }.to_string()
+            } else if gvar_type == "{sv}" {
+                // The "s" stands for string
+                let gvar_string = unsafe { glib::ffi::g_variant_get_child_value(gvar, 0) };
+                let gvar_string = unsafe {
+                    CStr::from_ptr(glib::ffi::g_variant_get_string(gvar_string, null_mut()))
+                }
+                .to_string_lossy()
+                .to_string();
+
+                // The "v" stands for another GVariant
+                let gvar_values = unsafe { glib::ffi::g_variant_get_child_value(gvar, 1) };
+                let gvar_values = unsafe { glib::ffi::g_variant_get_variant(gvar_values) };
+
+                // The inner value is a "at", i.e., an array of uint64_t
+                let child_qtty = unsafe { glib::ffi::g_variant_n_children(gvar_values) };
+                let mut values = String::from(gvar_string);
+                for i in 0..child_qtty {
+                    let gvar_value =
+                        unsafe { glib::ffi::g_variant_get_child_value(gvar_values, i) };
+                    let gvar_value =
+                        unsafe { glib::ffi::g_variant_get_uint64(gvar_value) }.to_string();
+
+                    values = format!("{}, {}", values, gvar_value);
+                }
+
+                values
+            } else {
+                String::new()
+            }
+        }
+        GVariantDataType::Uint64Range => {
+            todo!()
+        }
+    })
+}
+
+/// Returns the type of a GVariant type, as a string.
+pub fn gvariant_type_string(gvar: *mut GVariant) -> String {
+    let out = unsafe { glib::ffi::g_variant_get_type_string(gvar) };
+    unsafe { CStr::from_ptr(out) }.to_string_lossy().to_string()
 }

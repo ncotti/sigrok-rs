@@ -5,9 +5,9 @@ use libsigrok_sys::sigrok as sr;
 
 use sr::{GSList, sr_channel, sr_channel_group, sr_context, sr_dev_driver, sr_dev_inst};
 
+use crate::config_option::ConfigOption;
+use crate::config_option::GVariantDataType;
 use crate::driver::Driver;
-use crate::types::ConfigOption;
-use crate::types::GVariantDataType;
 use crate::utils::gslist_to_vec;
 
 use std::ffi::{CStr, CString};
@@ -15,7 +15,6 @@ use std::fmt::Display;
 use std::ptr::{null, null_mut};
 
 use crate::sr_try;
-use crate::types::ChannelType;
 use crate::types::SrError;
 
 /// A device can be thought as any lab instrument capable of
@@ -395,69 +394,7 @@ impl Device {
             (option.unwrap(), group.p_group)
         };
 
-        let data: *mut GVariant = match option.data_type {
-            GVariantDataType::Bool => {
-                let possible_true_values: Vec<&str> = vec!["true", "1", "on", "ok", "t"];
-                let possible_false_values: Vec<&str> = vec!["false", "0", "off", "f"];
-                let value: i32 = if possible_true_values.contains(&value.to_lowercase().as_str()) {
-                    1
-                } else if possible_false_values.contains(&value.to_lowercase().as_str()) {
-                    0
-                } else {
-                    return Err(SrError::SrInvalidOptionValue);
-                };
-
-                unsafe { glib::ffi::g_variant_new_boolean(value) }
-            }
-            GVariantDataType::DoubleRange | GVariantDataType::Float => {
-                let value: Result<f64, std::num::ParseFloatError> = value.parse();
-                if value.is_err() {
-                    return Err(SrError::SrInvalidOptionValue);
-                }
-                let value = value.expect("Value is not error");
-                unsafe { glib::ffi::g_variant_new_double(value) }
-            }
-            GVariantDataType::Int32 => {
-                let value: Result<i32, std::num::ParseIntError> = value.parse();
-                if value.is_err() {
-                    return Err(SrError::SrInvalidOptionValue);
-                }
-                let value = value.expect("Value is not error");
-                unsafe { glib::ffi::g_variant_new_int32(value) }
-            }
-            GVariantDataType::KeyValue => {
-                todo!()
-            }
-            GVariantDataType::MQ => {
-                todo!()
-            }
-            GVariantDataType::RationalPeriod | GVariantDataType::RationalVolt => {
-                todo!()
-            }
-            GVariantDataType::String => unsafe {
-                glib::ffi::g_variant_new_string(CString::new(value.as_bytes()).unwrap().as_ptr())
-            },
-            GVariantDataType::Uint64 | GVariantDataType::Uint64Range => {
-                let value: Result<u64, std::num::ParseIntError> = value.parse();
-                if value.is_err() {
-                    return Err(SrError::SrInvalidOptionValue);
-                }
-                let value = value.expect("Value is not error");
-                unsafe { glib::ffi::g_variant_new_uint64(value) }
-            }
-        };
-
-        sr_try!(sr::sr_config_set(
-            self.p_device,
-            p_group,
-            option.key,
-            data.cast()
-        ));
-        sr_try!(sr::sr_config_commit(self.p_device));
-
-        option.value = String::from(value);
-
-        Ok(())
+        option.set(value, self.p_device, p_group)
     }
 
     /// Returns the current value of the given option `id`, which belongs to
@@ -690,6 +627,35 @@ impl Channel {
     /// Returns the index of the channel
     pub fn get_index(&self) -> i32 {
         self.index
+    }
+}
+
+/// Channel types
+#[derive(Debug, Clone, Copy)]
+pub enum ChannelType {
+    /// Digital channel, a.k.a "logic" channel.
+    Digital = 10000,
+    /// Analog channel.
+    Analog = 10001,
+}
+
+impl ChannelType {
+    /// Returns the name of the enum as a string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ChannelType::Digital => "Digital",
+            ChannelType::Analog => "Analog",
+        }
+    }
+}
+
+impl From<i32> for ChannelType {
+    fn from(value: i32) -> Self {
+        match value {
+            10000 => ChannelType::Digital,
+            10001 => ChannelType::Analog,
+            _ => ChannelType::Digital,
+        }
     }
 }
 
