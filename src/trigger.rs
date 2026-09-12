@@ -2,9 +2,9 @@
 
 use std::ptr::null_mut;
 
-use libsigrok_sys::sigrok::{sr_trigger, sr_trigger_stage};
-
 use libsigrok_sys::sigrok as sr;
+
+use sr::{sr_trigger, sr_trigger_stage};
 
 use crate::device::Channel;
 use crate::sr_try;

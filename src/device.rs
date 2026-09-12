@@ -220,7 +220,7 @@ impl Device {
     ///
     /// This functions will not return an error if the device was already
     /// opened.
-    fn open(&self) -> Result<(), SrError> {
+    pub fn open(&self) -> Result<(), SrError> {
         let status = unsafe { sr::sr_dev_open(self.p_device) };
         let status = SrError::from(status);
         match status {
@@ -297,27 +297,6 @@ impl Device {
             }
         }
         Err(SrError::SrChannelNotFound)
-    }
-
-    /// Compares the given value with the device's vendor, model, version,
-    /// serial number and connection ID, and also its driver name.
-    ///
-    /// Returns `true` if any of them match.
-    /// TODO
-    pub fn find(&self, value: impl AsRef<str>) -> bool {
-        let value: &str = value.as_ref();
-
-        if value.is_empty() {
-            return false;
-        }
-
-        (value == self.vendor)
-            || (value == self.model)
-            || (value == self.version)
-            || (value == self.serial_number)
-            || (value == self.connection_id)
-            || (value == self.driver.get_name())
-            || (value == self.driver.get_long_name())
     }
 
     /// Sets the option `id` for the given `channel_group_name` to the given
@@ -490,6 +469,25 @@ impl Device {
         ));
         channel.name = new_name.to_string();
         Ok(())
+    }
+}
+
+impl<T: AsRef<str>> PartialEq<T> for Device {
+    /// Compares the given value with the device's vendor, model,
+    /// serial number and connection ID, and also its driver name.
+    fn eq(&self, value: &T) -> bool {
+        let value: &str = value.as_ref();
+
+        if value.is_empty() {
+            return false;
+        }
+
+        (value == self.vendor)
+            || (value == self.model)
+            || (value == self.serial_number)
+            || (value == self.connection_id)
+            || (value == self.driver.get_name())
+            || (value == self.driver.get_long_name())
     }
 }
 
