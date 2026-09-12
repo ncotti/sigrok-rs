@@ -14,6 +14,9 @@ use crate::{
 };
 use sr::{sr_context, sr_session};
 
+use std::thread;
+use std::time::Duration;
+
 /// A Sigrok session
 pub struct Session {
     /// Sigrok library context. This is the value returned when calling
@@ -160,9 +163,57 @@ impl Session {
         //     let main_loop = glib::ffi::g_main_loop_new(0x0 as *mut _, 0);
         //     glib::ffi::g_main_loop_run(main_loop);
         // };
-        unsafe { assert!(sr::sr_session_is_running(self.p_session) == 1) }
-        sr_try!(sr::sr_session_stop(self.p_session));
+        self.stop()?;
         Ok(())
+    }
+
+    /// Runs the session for `timeout` time and blocks until the time passes.
+    ///
+    /// Timing is not precise, and the session may run for more or less time.
+    pub fn run_timeout(&self, timeout: Duration) -> Result<(), SrError> {
+        self.start()?;
+        thread::sleep(timeout);
+        self.stop()?;
+        Ok(())
+    }
+
+    /// Starts the session in a new thread.
+    pub fn start(&self) -> Result<(), SrError> {
+        sr_try!(sr::sr_session_datafeed_callback_add(
+            self.p_session,
+            Some(Session::my_callback),
+            null_mut()
+        ));
+        sr_try!(sr::sr_session_stopped_callback_set(
+            self.p_session,
+            Some(Session::stopped_callback),
+            null_mut()
+        ));
+
+        sr_try!(sr::sr_session_start(self.p_session));
+        let th_p_session: usize = self.p_session as usize;
+        thread::spawn(move || {
+            unsafe { sr::sr_session_run(th_p_session as *mut sr_session) };
+        });
+        Ok(())
+    }
+
+    /// Stops a running session.
+    ///
+    /// Sessions should be started with the `start()` method. This function
+    /// will not return an error if the session was not running.
+    pub fn stop(&self) -> Result<(), SrError> {
+        if unsafe { sr::sr_session_is_running(self.p_session) } == 1 {
+            sr_try!(sr::sr_session_stop(self.p_session));
+        }
+        // TODO, move to stopped_callback
+        thread::sleep(Duration::from_secs(1));
+        sr_try!(sr::sr_session_datafeed_callback_remove_all(self.p_session));
+        Ok(())
+    }
+
+    unsafe extern "C" fn stopped_callback(cb_data: *mut std::ffi::c_void) {
+        println!("Session stopped");
     }
 
     unsafe extern "C" fn my_callback(
@@ -196,6 +247,8 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
+    use crate::{config_option::MeasuredQuantityFlag::Duration, packets::Packet};
+
     use super::*;
 
     #[test]
@@ -204,6 +257,21 @@ mod tests {
         let demo_device = device_names.into_iter().find(|dev| dev == "demo").unwrap();
 
         let _session = Session::try_from(&demo_device)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_run_timed() -> Result<(), SrError> {
+        let session = Session::try_from("demo")?;
+
+        session.run_timed(std::time::Duration::from_secs(1))?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_run_limited_samples() -> Result<(), SrError> {
+        let session = Session::try_from("demo")?;
 
         Ok(())
     }

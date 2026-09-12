@@ -1,9 +1,8 @@
-use std::ptr::null_mut;
+use std::time::Duration;
 
 use sigrok_rs::types::SrError;
-use sigrok_rs::{device::Device, session::Session};
+use sigrok_rs::{session::Session};
 
-use libsigrok_sys::sigrok::{self as sr, sr_context};
 
 fn main() -> Result<(), SrError> {
     // println!(
@@ -24,7 +23,7 @@ fn main() -> Result<(), SrError> {
     // //session.set_trigger(TriggerEvent::One)?;
 
     let session = Session::try_from("demo").unwrap();
-    session.run()?;
+    session.run_timeout(Duration::from_secs(1))?;
 
     Ok(())
 }
