@@ -1,7 +1,4 @@
 //! Configuration options for devices and channel groups
-//!
-//!
-//!
 
 use std::{
     ffi::{CStr, CString},
@@ -9,11 +6,12 @@ use std::{
 };
 
 use glib::ffi::GVariant;
-use libsigrok_sys::sigrok::{
-    self as sr, sr_configcap_SR_CONF_GET, sr_configcap_SR_CONF_LIST, sr_keytype_SR_KEY_CONFIG,
-};
+use libsigrok_sys::sigrok as sr;
 
-use sr::{sr_channel_group, sr_dev_driver, sr_dev_inst};
+use sr::{
+    sr_channel_group, sr_configcap_SR_CONF_GET, sr_configcap_SR_CONF_LIST, sr_dev_driver,
+    sr_dev_inst, sr_keytype_SR_KEY_CONFIG,
+};
 
 use crate::{
     sr_try,
@@ -152,6 +150,7 @@ impl ConfigOption {
         Ok(options)
     }
 
+    /// Sets a configuration option to a given value.
     pub fn set(
         &mut self,
         value: &str,
@@ -218,38 +217,61 @@ impl ConfigOption {
     }
 }
 
-/// pub const sr_datatype_SR_T_UINT64: sr_datatype = 10000;
+/// All possible types for a glib GVariant returned by Sigrok
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-#[allow(missing_docs)]
 pub enum GVariantDataType {
+    /// u64. It is possible for it to hold multiple u64 presented as a "{sv}",
+    /// i.e., a string (s) and another GVariant (s), which holds inside a "at",
+    /// an array (a) of u64 (t).
     Uint64 = 10000,
+    /// Single String
     String = 10001,
+    /// Single bool
     Bool = 10002,
+    /// Single f32
     Float = 10003,
+    /// TODO
     RationalPeriod = 10004,
+    /// TODO
     RationalVolt = 10005,
+    /// TODO
     KeyValue = 10006,
+    /// TODO
     Uint64Range = 10007,
+    /// TODO
     DoubleRange = 10008,
+    /// Single i32
     Int32 = 10009,
+    /// Measured quantity. The value usually has the type {ut}, i.e., a tuple
+    /// with a u32 (u) and a u64 (t), which hold a MeasuredQuantity enum value
+    /// and a MeasuredQuantityFlag enum.
     MQ = 10010,
 }
 
+/// Measured quantity, returned from a ConfigOption.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MeasuredQuantity {
+    /// Voltage [V]
     Voltage = 10000,
+    /// Current [A]
     Current,
+    /// Resistance [Ohm]
     Resistance,
+    /// Capacitance [F]
     Capacitance,
+    /// Temperature [°C]
     Temperature,
+    /// Frequency [Hz]
     Frequency,
     /// Duty cycle, e.g. on/off ratio.
     DutyCycle,
     /// Continuity test.
     Continuity,
+    /// Pulse width [s]
     PulseWidth,
+    /// Conductance [Siemens]
     Conductance,
     /// Electrical power, usually in W, or dBm.
     Power,
@@ -343,6 +365,7 @@ impl TryFrom<i32> for MeasuredQuantity {
 }
 
 impl MeasuredQuantity {
+    /// Converts the enum to a string value.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Voltage => "Voltage",
@@ -382,30 +405,61 @@ impl MeasuredQuantity {
     }
 }
 
+/// Flags associated with a MeasuredQuantity
 #[repr(u64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MeasuredQuantityFlag {
+    /// Voltage measurement is alternating current (AC).
     Ac = 0x01,
+    /// Voltage measurement is direct current (DC).
     Dc = 0x02,
+    /// This is a true RMS measurement.
     Rms = 0x04,
+    /// Value is voltage drop across a diode, or NAN.
     Diode = 0x08,
+    /// Device is in "hold" mode (repeating the last measurement).
     Hold = 0x10,
+    /// Device is in "max" mode, only updating upon a new max value.
     Max = 0x20,
+    /// Device is in "min" mode, only updating upon a new min value.
     Min = 0x40,
+    /// Device is in autoranging mode.
     Autorange = 0x80,
+    /// Device is in relative mode.
     Relative = 0x100,
+    /// Sound pressure level is A-weighted in the frequency domain,
+    /// according to IEC 61672:2003.
     SplFreqWeightA = 0x200,
+    /// Sound pressure level is C-weighted in the frequency domain,
+    /// according to IEC 61672:2003.
     SplFreqWeightC = 0x400,
+    /// Sound pressure level is Z-weighted (i.e. not at all) in the
+    /// frequency domain, according to IEC 61672:2003.
     SplFreqWeightZ = 0x800,
+    /// Sound pressure level is not weighted in the frequency domain,
+    /// albeit without standards-defined low and high frequency limits.
     SplFreqWeightFlat = 0x1000,
+    /// Sound pressure level measurement is S-weighted (1s) in the
+    /// time domain
     SplTimeWeightS = 0x2000,
+    /// Sound pressure level measurement is F-weighted (125ms) in the
+    /// time domain.
     SplTimeWeightF = 0x4000,
+    /// Sound pressure level is time-averaged (LAT), also known as
+    /// Equivalent Continuous A-weighted Sound Level (LEQ).
     SplLat = 0x8000,
+    /// Sound pressure level represented as a percentage of measurements
+    /// that were over a preset alarm level.
     SplPctOverAlarm = 0x10000,
+    /// Time is duration (as opposed to epoch, ...).
     Duration = 0x20000,
+    /// Device is in "avg" mode, averaging upon each new value.
     Avg = 0x40000,
+    /// Reference value shown.
     Reference = 0x80000,
+    /// Unstable value (hasn't settled yet).
     Unstable = 0x100000,
+    /// Measurement is four wire (e.g. Kelvin connection).
     FourWire = 0x200000,
 }
 
@@ -442,6 +496,7 @@ impl TryFrom<u64> for MeasuredQuantityFlag {
 }
 
 impl MeasuredQuantityFlag {
+    /// Converts the enum into a String value
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Ac => "AC",

@@ -1,16 +1,14 @@
 //! Device representation
 
-use glib::ffi::GVariant;
 use libsigrok_sys::sigrok as sr;
 
 use sr::{GSList, sr_channel, sr_channel_group, sr_context, sr_dev_driver, sr_dev_inst};
 
 use crate::config_option::ConfigOption;
-use crate::config_option::GVariantDataType;
 use crate::driver::Driver;
 use crate::utils::gslist_to_vec;
 
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::fmt::Display;
 use std::ptr::{null, null_mut};
 
