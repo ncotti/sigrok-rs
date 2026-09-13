@@ -148,6 +148,12 @@ impl OutputModule {
     }
 }
 
+impl fmt::Display for OutputModule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.get_info())
+    }
+}
+
 /// Stores all information related to an output module, but without
 /// explicitly creating one.
 ///
@@ -255,6 +261,18 @@ impl TryFrom<&str> for OutputModuleInfo {
         } else {
             Ok(Self::new(p_output_mod))
         }
+    }
+}
+
+impl fmt::Display for OutputModuleInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Output module: {} ({})", self.name, self.id)?;
+        writeln!(f, "  {}", self.description)?;
+
+        for option in &self.options {
+            write!(f, "  {}", option)?;
+        }
+        Ok(())
     }
 }
 
