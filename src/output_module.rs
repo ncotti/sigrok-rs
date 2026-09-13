@@ -10,6 +10,9 @@ use crate::types::SrError;
 use crate::utils::gslist_to_vec;
 
 use std::fmt;
+use std::path::Path;
+
+use std::sync::{Arc, Mutex};
 
 /// Generic option struct used by various subsystems, equivalent to `sr_option`.
 #[derive(Debug, Clone)]
@@ -88,6 +91,18 @@ pub struct OutputModule {
     info: OutputModuleInfo,
     /// Output will be written to this file
     filename: String,
+    /// Number of samples that have been read from the Logic channel since
+    /// the last session was started.
+    pub samples: Arc<Mutex<u64>>,
+    /// Last batch of samples that has been read from the device's
+    /// Logic channel.
+    ///
+    /// Each bit represents the value from the logic channel, from
+    /// D7 (MSB) to D0 (LSB).
+    pub data: Arc<Mutex<Vec<u8>>>,
+    /// If the session is running until getting "max_samples" and stopping,
+    /// then a value greater than zero here will shutdown the session
+    pub max_samples: Arc<Mutex<u64>>,
 }
 
 impl OutputModule {
@@ -104,12 +119,12 @@ impl OutputModule {
     /// extracted.
     pub fn new(
         id: &str,
-        filename: &str,
+        filename: impl AsRef<Path>,
         p_device: *const sr_dev_inst,
     ) -> Result<OutputModule, SrError> {
         // The filename requested by Sigrok's API seems to not be used, so
         // just give it a "mock name" just in case.
-        let filename = String::from(filename);
+        let filename = filename.as_ref().to_string_lossy().to_string();
         let sigrok_filename = format!("sr_{}", &filename);
 
         let sigrok_filename: std::ffi::CString =
@@ -129,6 +144,9 @@ impl OutputModule {
             p_output: p_output,
             info: info,
             filename: filename,
+            samples: Arc::new(Mutex::new(0)),
+            data: Arc::new(Mutex::new(Vec::new())),
+            max_samples: Arc::new(Mutex::new(0)),
         })
     }
 
@@ -145,6 +163,56 @@ impl OutputModule {
     /// Returns the associated "info" struct for the output module.
     pub fn get_info(&self) -> &OutputModuleInfo {
         &self.info
+    }
+
+    /// Resets the sample count.
+    pub fn reset_samples(&mut self) {
+        let mut samples = self.samples.lock().unwrap();
+        let mut data = self.data.lock().unwrap();
+        *samples = 0;
+        (*data).clear();
+    }
+
+    /// Updates the sample quantity and the last data received.
+    pub fn update_samples(&mut self, new_data: Vec<u8>) {
+        let mut samples = self.samples.lock().unwrap();
+        let mut data = self.data.lock().unwrap();
+        *samples += data.len() as u64;
+        *data = new_data;
+    }
+
+    /// Returns the last values read from the Logic channels until now.
+    ///
+    /// All prior values are discarded, only the last data feed packet is
+    /// retained.
+    pub fn get_data(&self) -> Vec<u8> {
+        let data = self.data.lock().unwrap();
+        (*data).clone()
+    }
+
+    /// Returns the total number of samples that have been read from the Logic
+    /// channels until now.
+    pub fn get_samples(&self) -> u64 {
+        let samples = self.samples.lock().unwrap();
+        *samples
+    }
+
+    /// Sets the maximum number of samples for the current session.
+    ///
+    /// If a `max_samples > 0`, then the session will be stopped when exactly
+    /// that amount of samples have been read.
+    pub fn set_max_samples(&mut self, max_samples: u64) {
+        let mut max_samples_mutex = self.max_samples.lock().unwrap();
+        *max_samples_mutex = max_samples;
+    }
+
+    /// Returns the maximum amount of samples for the current session.
+    ///
+    /// A value of `0` indicates that the session does not have a limit of
+    /// samples.
+    pub fn get_max_samples(&self) -> u64 {
+        let max_samples = self.max_samples.lock().unwrap();
+        *max_samples
     }
 }
 

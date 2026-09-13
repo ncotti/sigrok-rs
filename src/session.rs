@@ -7,13 +7,17 @@ use std::{
     ptr::{null, null_mut},
 };
 
+use std::sync::{Arc, Mutex};
+
+use std::path::Path;
+
 use glib::{LogLevel, ffi::GString};
 use libsigrok_sys::sigrok::{self as sr, _GString, sr_datafeed_packet, sr_dev_inst, sr_output};
 
 use crate::{
     Device, SrError,
     output_module::OutputModule,
-    packets::HeaderPacket,
+    packets::{HeaderPacket, LogicPacket},
     sr_try,
     trigger::{Trigger, TriggerEvent},
     types::PacketType,
@@ -134,18 +138,14 @@ impl Session {
     ///
     /// The device "demo" is always discovered, so the returned vector will
     /// never be empty.
-    pub fn scan() -> Result<Vec<String>, SrError> {
+    pub fn scan() -> Result<Vec<Device>, SrError> {
         let mut p_context: *mut sr_context = null_mut();
         sr_try!(sr::sr_init(&mut p_context));
 
-        let devices = Device::scan(p_context)?;
-        let mut names: Vec<String> = Vec::new();
-        for device in devices {
-            names.push(device.get_driver_name().clone())
-        }
+        let devices: Vec<Device> = Device::scan(p_context)?;
 
         unsafe { sr::sr_exit(p_context) };
-        Ok(names)
+        Ok(devices)
     }
 
     pub fn set_trigger(&self, event: TriggerEvent) -> Result<(), SrError> {
@@ -185,13 +185,28 @@ impl Session {
         Ok(())
     }
 
+    pub fn run_samples(&mut self, samples: u64) -> Result<Vec<u8>, SrError> {
+        self.output.set_max_samples(samples);
+        self.start()?;
+        loop {
+            if self.output.get_samples() >= samples {
+                thread::sleep(Duration::from_millis(10));
+                break;
+            }
+        }
+        self.stop()?;
+
+        let mut data = self.output.get_data();
+        data.resize(samples as usize, 0);
+        Ok(data)
+    }
+
     /// Starts the session in a new thread.
     pub fn start(&mut self) -> Result<(), SrError> {
         let cb_data: *mut c_void = (&mut self.output) as *mut OutputModule as *mut c_void;
         sr_try!(sr::sr_session_datafeed_callback_add(
             self.p_session,
             Some(Session::my_callback),
-            //self.output.get_pointer().cast_mut().cast(),
             cb_data,
         ));
         sr_try!(sr::sr_session_stopped_callback_set(
@@ -228,24 +243,63 @@ impl Session {
 
     unsafe extern "C" fn my_callback(
         p_device: *const sr_dev_inst,
-        packet: *const sr_datafeed_packet,
+        p_packet: *const sr_datafeed_packet,
         cb_data: *mut std::ffi::c_void,
     ) {
-        if packet == null() {
+        if p_packet == null() {
             return;
         }
 
-        //let output: *const sr_output = cb_data.cast();
         let output: &mut OutputModule = unsafe { &mut *(cb_data as *mut OutputModule) };
 
-        // TODO the problem is here
+        let packet = unsafe { *p_packet };
+
+        let packet_type = PacketType::try_from(packet.type_).unwrap();
+
+        match packet_type {
+            PacketType::Header => {
+                println!("{}", HeaderPacket::from(packet.payload));
+            }
+            PacketType::End => {}
+            PacketType::Meta => {}
+            PacketType::Trigger => {}
+            PacketType::Logic => {
+                let max_samples = output.max_samples.lock().unwrap();
+                let mut samples = output.samples.lock().unwrap();
+                let logic = unsafe { &mut *(packet.payload as *mut sr::sr_datafeed_logic) };
+
+                let bytes_to_write =
+                    if (*max_samples > 0) && (*samples + logic.length > *max_samples) {
+                        //max_samples - samples
+                        println!("{} {} {}", *max_samples, *samples, logic.length);
+                        1
+                    } else {
+                        logic.length
+                    };
+
+                // TODO should create a clone, rather than modifying the packet
+                // directly. I assume tha libsigrok doesn't know how to free the
+                // memory afterwards.
+                logic.length = bytes_to_write;
+
+                let packet: LogicPacket = LogicPacket::from(packet.payload);
+
+                *samples += packet.data.len() as u64;
+                let mut data = output.data.lock().unwrap();
+                *data = packet.data;
+            }
+            PacketType::FrameBegin => {}
+            PacketType::FrameEnd => {}
+            PacketType::Analog => {}
+        };
+
         let mut p_gstring: *mut _GString = null_mut();
         assert!(
             SrError::SrOk as i32
                 == unsafe {
                     sr::sr_output_send(
                         output.get_pointer(),
-                        packet,
+                        p_packet,
                         std::ptr::addr_of_mut!(p_gstring),
                     )
                 }
@@ -259,35 +313,18 @@ impl Session {
                     .append(true)
                     .open(output.get_filename())
                     .unwrap();
+
                 let bytes = unsafe {
                     std::slice::from_raw_parts(gstring.str_ as *const u8, gstring.len as usize)
                 };
-                file.write_all(bytes).unwrap();
+                file.write(bytes).unwrap();
             }
             unsafe { glib::ffi::g_string_free(p_gstring as *mut GString, 1) };
         }
-
-        let packet = unsafe { *packet };
-
-        let packet_type = PacketType::try_from(packet.type_).unwrap();
-
-        match packet_type {
-            PacketType::Header => {
-                println!("{}", HeaderPacket::from(packet.payload));
-            }
-            PacketType::End => {}
-            PacketType::Meta => {}
-            PacketType::Trigger => {}
-            PacketType::Logic => {
-                //println!("{}", LogicPacket::from(packet.payload));
-            }
-            PacketType::FrameBegin => {}
-            PacketType::FrameEnd => {}
-            PacketType::Analog => {}
-        };
     }
 
-    pub fn set_output(&mut self, id: &str, filename: &str) -> Result<(), SrError> {
+    pub fn set_output(&mut self, id: &str, filename: impl AsRef<Path>) -> Result<(), SrError> {
+        let filename: &Path = filename.as_ref();
         self.output = OutputModule::new(id, filename, self.device.get_pointer())?;
         Ok(())
     }
@@ -299,16 +336,6 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use super::*;
-
-    #[test]
-    fn test_session_scan() -> Result<(), SrError> {
-        let device_names = Session::scan().unwrap();
-        let demo_device = device_names.into_iter().find(|dev| dev == "demo").unwrap();
-
-        let _session = Session::try_from(&demo_device)?;
-
-        Ok(())
-    }
 
     #[test]
     fn test_start_and_stop() -> Result<(), SrError> {

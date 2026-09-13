@@ -54,14 +54,11 @@ pub struct Device {
 
 impl Display for Device {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Device info:")?;
+        writeln!(f, "Device model: {}", self.get_model())?;
 
         let mut device_info: String = String::new();
         if !self.get_vendor().is_empty() {
             device_info.push_str(format!("  * Vendor: \"{}\"\n", self.get_vendor()).as_str());
-        }
-        if !self.get_model().is_empty() {
-            device_info.push_str(format!("  * Model: \"{}\"\n", self.get_model()).as_str());
         }
         if !self.get_version().is_empty() {
             device_info.push_str(format!("  * Version: \"{}\"\n", self.get_version()).as_str());
@@ -199,7 +196,7 @@ impl Device {
         let config_options: Vec<ConfigOption> =
             ConfigOption::scan(driver.get_pointer(), p_device, null())?;
 
-        let dev = Device {
+        let mut dev = Device {
             driver: driver.clone(),
             p_device: p_device,
             vendor: vendor,
@@ -220,7 +217,7 @@ impl Device {
     ///
     /// This functions will not return an error if the device was already
     /// opened.
-    pub fn open(&self) -> Result<(), SrError> {
+    pub fn open(&mut self) -> Result<(), SrError> {
         let status = unsafe { sr::sr_dev_open(self.p_device) };
         let status = SrError::from(status);
         match status {

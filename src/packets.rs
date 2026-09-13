@@ -59,7 +59,7 @@ impl fmt::Display for HeaderPacket {
 /// ```
 pub struct LogicPacket {
     /// Logic data from each logic channel, up to 16 channels
-    data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 impl From<*const c_void> for LogicPacket {

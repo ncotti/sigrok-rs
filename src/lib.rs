@@ -13,11 +13,11 @@ pub mod trigger;
 pub mod types;
 pub mod version;
 
+pub use crate::device::Device;
+pub use crate::session::Session;
+pub use crate::types::SrError;
+
 mod utils;
-
-use crate::device::Device;
-
-use crate::types::SrError;
 
 pub use version::*;
 
