@@ -257,7 +257,7 @@ impl Session {
                 let mut file = OpenOptions::new()
                     .create(true)
                     .append(true)
-                    .open(&output.filename)
+                    .open(output.get_filename())
                     .unwrap();
                 let bytes = unsafe {
                     std::slice::from_raw_parts(gstring.str_ as *const u8, gstring.len as usize)

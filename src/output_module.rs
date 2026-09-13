@@ -9,6 +9,8 @@ use libsigrok_sys::sigrok::{self as sr, sr_dev_inst, sr_option, sr_output, sr_ou
 use crate::types::SrError;
 use crate::utils::gslist_to_vec;
 
+use std::fmt;
+
 /// Generic option struct used by various subsystems, equivalent to `sr_option`.
 #[derive(Debug, Clone)]
 pub struct SrOption {
@@ -65,16 +67,41 @@ impl SrOption {
     }
 }
 
+impl fmt::Display for SrOption {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Option: {} ({})", self.name, self.id)?;
+        writeln!(f, "  {}", self.description)?;
+        writeln!(f, "  Default value: {}", self.default_value)?;
+        if !self.possible_values.is_empty() {
+            writeln!(f, "  Possible values: {}", self.possible_values.join(" "))?;
+        }
+        Ok(())
+    }
+}
+
+/// The output module dictates how the information retrieved from the device's
+/// channels will be stored.
 pub struct OutputModule {
     /// Pointer to a C-FFI output module.
     p_output: *const sr_output,
     /// All info related to the output module
     info: OutputModuleInfo,
     /// Output will be written to this file
-    pub filename: String,
+    filename: String,
 }
 
 impl OutputModule {
+    /// Creates a new output module.
+    ///
+    /// * `id`: Which output module to select. The list of possible output
+    /// modules can be obtained from the `OutputModule::scan()` method.
+    ///
+    /// * `filename`: Output file where information will be stored.
+    ///
+    /// * `p_device`: C-FFI pointer to the device connected to the output
+    /// module. Although the device and the output format are independent, from
+    /// the device details like the sample rate and the number of channels are
+    /// extracted.
     pub fn new(
         id: &str,
         filename: &str,
@@ -105,12 +132,29 @@ impl OutputModule {
         })
     }
 
+    /// Returns the output module pointer
     pub fn get_pointer(&self) -> *const sr_output {
         self.p_output
     }
+
+    /// Returns the name of the file where data will be stored.
+    pub fn get_filename(&self) -> &String {
+        &self.filename
+    }
+
+    /// Returns the associated "info" struct for the output module.
+    pub fn get_info(&self) -> &OutputModuleInfo {
+        &self.info
+    }
 }
 
-/// TODO
+/// Stores all information related to an output module, but without
+/// explicitly creating one.
+///
+/// This distinction between `OutputModule` and `OutputModuleInfo` comes from
+/// the fact that, to create a new `OutputModule`, a device is required.
+/// The separation between the two allows to present all available output
+/// structures to the user without them having an instantiated device.
 #[derive(Debug, Clone)]
 pub struct OutputModuleInfo {
     /// Raw C-FFI pointer to the output module info.
@@ -121,7 +165,7 @@ pub struct OutputModuleInfo {
     name: String,
     /// Output module's description. Just informative.
     description: String,
-    /// TODO
+    /// Configuration options.
     options: Vec<SrOption>,
 }
 
@@ -134,7 +178,7 @@ impl Drop for OutputModule {
 }
 
 impl OutputModuleInfo {
-    /// Returns a list of all available output modules.
+    /// Returns information about all available output modules.
     pub fn scan() -> Vec<OutputModuleInfo> {
         let mut modules: Vec<OutputModuleInfo> = Vec::new();
 
