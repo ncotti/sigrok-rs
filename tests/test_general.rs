@@ -90,23 +90,21 @@ fn test_run_timeout() -> Result<(), SrError> {
 fn test_run_timeout_measured() -> Result<(), SrError> {
     let mut session: Session = Session::try_from("demo")?;
 
-    let timer: std::time::Instant = std::time::Instant::now();
-    let timeout: Duration = Duration::from_millis(200);
-    let data = session.run_timeout(timeout)?;
-    assert!(timer.elapsed().abs_diff(timeout) < Duration::from_millis(5));
-    assert!(data.len() > 0);
+    // 200 kHz, default value
+    let samplerate: usize = 200000;
 
-    let timer: std::time::Instant = std::time::Instant::now();
+    let timeout: Duration = Duration::from_millis(100);
+    let data = session.run_timeout(timeout)?;
+    dbg!(data.len());
+    assert!(data.len() == samplerate * 100 / 1000);
+
     let timeout: Duration = Duration::from_millis(400);
     let data = session.run_timeout(timeout)?;
-    assert!(timer.elapsed().abs_diff(timeout) < Duration::from_millis(5));
-    assert!(data.len() > 0);
+    assert!(data.len() == samplerate * 400 / 1000);
 
-    let timer: std::time::Instant = std::time::Instant::now();
     let timeout: Duration = Duration::from_millis(500);
     let data = session.run_timeout(timeout)?;
-    assert!(timer.elapsed().abs_diff(timeout) < Duration::from_millis(5));
-    assert!(data.len() > 0);
+    assert!(data.len() == samplerate * 500 / 1000);
 
     Ok(())
 }
@@ -122,7 +120,7 @@ fn test_run_samples() -> Result<(), SrError> {
     let samples: u64 = 40;
 
     session.set_output("ascii", output_file.path())?;
-    let data = session.run_samples(samples, Duration::from_secs(1))?;
+    let data = session.run_samples(samples)?;
     assert!(data.len() == samples as usize);
 
     let file = std::fs::File::open(output_file.path()).unwrap();
@@ -141,27 +139,5 @@ fn test_run_samples() -> Result<(), SrError> {
     dbg!(&line2);
     assert!(line2.len() == (samples + 4) as usize);
 
-    Ok(())
-}
-
-/// Test the timeout condition when requesting too much samples in too
-/// little time.
-#[test]
-fn test_run_samples_timeout() -> Result<(), SrError> {
-    let mut session = Session::try_from("demo")?;
-
-    let data_len: usize = 100000;
-    let timer: std::time::Instant = std::time::Instant::now();
-    let timeout: Duration = Duration::from_millis(200);
-    let data = session.run_samples(data_len as u64, timeout)?;
-    dbg!(timer.elapsed().abs_diff(timeout));
-    assert!(timer.elapsed().abs_diff(timeout) < Duration::from_millis(15));
-    assert!(data.len() < data_len);
-
-    println!("Running second time");
-    let data_len: usize = 11000;
-    let data = session.run_samples(data_len as u64, Duration::from_millis(1000))?;
-    dbg!(data.len());
-    assert!(data.len() == data_len);
     Ok(())
 }

@@ -190,41 +190,30 @@ impl Session {
         ));
         sr_try!(sr::sr_session_start(self.p_session));
         sr_try!(sr::sr_session_run(self.p_session));
-        self.stop()?;
+        self.stop(true)?;
         Ok(())
     }
 
     /// Runs the session for `timeout` time and blocks until the time passes.
-    ///
-    /// Timing is not precise, and the session may run for more or less time.
     pub fn run_timeout(&mut self, timeout: Duration) -> Result<Vec<u8>, SrError> {
-        self.start()?;
-        thread::sleep(timeout);
-        self.stop()?;
-        Ok(self.output.lock().unwrap().data.clone())
+        // Although some devices have the "limit_time" option for ending the
+        // data acquisition, this is not available for all devices.
+        // Therefore, we will use the "limit_samples" and the "samplerate" as
+        // a surefire replacement.
+        let samplerate: u64 = self.device.get_option("samplerate")?.parse().unwrap();
+        let samples = samplerate * (timeout.as_millis() as u64) / 1000;
+        let data = self.run_samples(samples)?;
+        Ok(data)
     }
 
-    pub fn run_samples(&mut self, samples: u64, timeout: Duration) -> Result<Vec<u8>, SrError> {
-        self.output.lock().unwrap().max_samples = samples;
+    pub fn run_samples(&mut self, samples: u64) -> Result<Vec<u8>, SrError> {
         self.device
             .set_option("limit_samples", &samples.to_string())?;
-        self.start()?;
-        let timer = std::time::Instant::now();
 
-        while timer.elapsed() < timeout {
-            let lock = self.output.try_lock();
-            let current_samples = if lock.is_ok() {
-                lock.unwrap().samples
-            } else {
-                0
-            };
-            if current_samples == samples {
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-        self.stop()?;
-        self.device.set_option("limit_samples", "0")?;
+        self.start()?;
+        self.stop(false)?;
+        // TODO, can't go back to continous mode.
+        //self.device.set_option("limit_samples", "0")?;
 
         Ok(self.output.lock().unwrap().data.clone())
     }
@@ -232,7 +221,6 @@ impl Session {
     /// Starts the session in a new thread.
     pub fn start(&mut self) -> Result<(), SrError> {
         self.output.lock().unwrap().data = Vec::new();
-        self.output.lock().unwrap().samples = 0;
         let p_data: *mut c_void =
             (&mut self.output as *mut Arc<Mutex<OutputModule>>) as *mut c_void;
         sr_try!(sr::sr_session_datafeed_callback_add(
@@ -258,8 +246,8 @@ impl Session {
     ///
     /// Sessions should be started with the `start()` method. This function
     /// will not return an error if the session was not running.
-    pub fn stop(&mut self) -> Result<(), SrError> {
-        if unsafe { sr::sr_session_is_running(self.p_session) } == 1 {
+    pub fn stop(&mut self, force: bool) -> Result<(), SrError> {
+        if unsafe { sr::sr_session_is_running(self.p_session) } == 1 && force {
             sr_try!(sr::sr_session_stop(self.p_session));
         }
         if self.thread_handle.is_some() {
@@ -315,26 +303,10 @@ extern "C" fn my_callback(
         PacketType::Meta => {}
         PacketType::Trigger => {}
         PacketType::Logic => {
-            // The user requested for the loop to run until "max_samples"
-            // have been received
-            if (output.samples < output.max_samples) || (output.max_samples == 0) {
-                let mut logic_packet: LogicPacket = LogicPacket::from(packet.payload);
-
-                if output.max_samples > 0 {
-                    let packet_data_len =
-                        if (output.samples + logic_packet.data.len() as u64) > output.max_samples {
-                            output.max_samples - output.samples
-                        } else {
-                            logic_packet.data.len() as u64
-                        };
-                    logic_packet.data.resize(packet_data_len as usize, 0);
-                }
-
-                output.samples += logic_packet.data.len() as u64;
-                output.data.extend(logic_packet.data);
-                // TODO, fix the reason why putting a sleep breaks everything in the callback
-                //thread::sleep(Duration::from_millis(1));
-            }
+            let logic_packet: LogicPacket = LogicPacket::from(packet.payload);
+            output.data.extend(logic_packet.data);
+            // TODO, fix the reason why putting a sleep breaks everything in the callback
+            //thread::sleep(Duration::from_millis(1));
         }
         PacketType::FrameBegin => {}
         PacketType::FrameEnd => {}

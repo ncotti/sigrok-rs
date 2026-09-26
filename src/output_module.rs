@@ -98,18 +98,12 @@ pub struct OutputModule {
     info: OutputModuleInfo,
     /// Output will be written to this file
     filename: String,
-    /// Number of samples that have been read from the Logic channel since
-    /// the last session was started.
-    pub samples: u64,
     /// Last batch of samples that has been read from the device's
     /// Logic channel.
     ///
     /// Each bit represents the value from the logic channel, from
     /// D7 (MSB) to D0 (LSB).
     pub data: Vec<u8>,
-    /// If the session is running until getting "max_samples" and stopping,
-    /// then a value greater than zero here will shutdown the session
-    pub max_samples: u64,
 }
 
 impl OutputModule {
@@ -161,9 +155,7 @@ impl OutputModule {
             p_session: p_session,
             info: info,
             filename: filename,
-            samples: 0,
             data: Vec::new(),
-            max_samples: 0,
         })
     }
 
@@ -180,12 +172,6 @@ impl OutputModule {
     /// Returns the associated "info" struct for the output module.
     pub fn get_info(&self) -> &OutputModuleInfo {
         &self.info
-    }
-
-    /// Updates the sample quantity and the last data received.
-    pub fn update_samples(&mut self, new_data: Vec<u8>) {
-        self.samples += new_data.len() as u64;
-        self.data = new_data;
     }
 }
 
