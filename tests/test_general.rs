@@ -126,18 +126,17 @@ fn test_run_samples() -> Result<(), SrError> {
     let file = std::fs::File::open(output_file.path()).unwrap();
     let mut reader = io::BufReader::new(file);
 
-    let mut line0: String = String::new();
-    reader.read_line(&mut line0).unwrap();
-    let mut line1: String = String::new();
-    reader.read_line(&mut line1).unwrap();
-    let mut line2: String = String::new();
-    reader.read_line(&mut line2).unwrap();
+    let mut line: String = String::new();
+    reader.read_line(&mut line).unwrap();
+    assert!(line == "libsigrok 0.5.2\n");
 
-    assert!(line0 == "libsigrok 0.5.2\n");
-    assert!(line1 == "Acquisition with 8/13 channels at 200 kHz\n");
-    // line should be D0:<samples>\n
-    dbg!(&line2);
-    assert!(line2.len() == (samples + 4) as usize);
+    let mut line: String = String::new();
+    reader.read_line(&mut line).unwrap();
+    assert!(line == "Acquisition with 8/13 channels at 200 kHz\n");
+
+    // Line should be D0:<samples>\n
+    let mut line: String = String::new();
+    assert!(reader.read_line(&mut line).unwrap() == (samples + 4) as usize);
 
     Ok(())
 }

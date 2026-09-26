@@ -22,19 +22,22 @@ fn main() -> Result<(), SrError> {
     //let session = Session::try_from("fx2lafw").unwrap();
     // //session.set_trigger(TriggerEvent::One)?;
 
-    // let mut session = Session::try_from("demo").unwrap();
-    // session.run_timeout(Duration::from_secs(1))?;
-
     // let output_modules_info = Session::scan_output()?;
     // dbg!(output_modules_info);
 
-    let devices: Vec<Device> = Session::scan()?;
-    let demo_device: Device = devices
-        .into_iter()
-        .find(|dev| dev.get_driver_name() == "demo")
-        .unwrap();
+    // let devices: Vec<Device> = Session::scan()?;
+    // let demo_device: Device = devices
+    //     .into_iter()
+    //     .find(|dev| dev.get_driver_name() == "demo")
+    //     .unwrap();
 
-    println!("{}", demo_device);
+    // println!("{}", demo_device);
+
+    let mut session = Session::try_from("fx2lafw").unwrap();
+    //session.set_output("bits", "tmp.txt")?;
+    //session.run_samples(100, Duration::from_secs(1))?;
+
+    println!("{}", session.device);
 
     Ok(())
 }

@@ -44,6 +44,8 @@ pub struct Session {
     output: Arc<Mutex<OutputModule>>,
     /// Handle for the sigrok thread.
     thread_handle: Option<thread::JoinHandle<()>>,
+    output_id: String,
+    output_filename: String,
 }
 
 impl Drop for Session {
@@ -129,6 +131,8 @@ impl Session {
             device: device,
             output: output,
             thread_handle: None,
+            output_id: String::from("null"),
+            output_filename: String::new(),
         };
 
         Ok(session)
@@ -220,6 +224,12 @@ impl Session {
 
     /// Starts the session in a new thread.
     pub fn start(&mut self) -> Result<(), SrError> {
+        *(self.output.lock().unwrap()) = OutputModule::new(
+            &self.output_id,
+            &self.output_filename,
+            self.device.get_pointer(),
+            self.p_session,
+        )?;
         self.output.lock().unwrap().data = Vec::new();
         let p_data: *mut c_void =
             (&mut self.output as *mut Arc<Mutex<OutputModule>>) as *mut c_void;
@@ -261,8 +271,8 @@ impl Session {
 
     pub fn set_output(&mut self, id: &str, filename: impl AsRef<Path>) -> Result<(), SrError> {
         let filename: &Path = filename.as_ref();
-        *(self.output.lock().unwrap()) =
-            OutputModule::new(id, filename, self.device.get_pointer(), self.p_session)?;
+        self.output_filename = filename.to_string_lossy().to_string();
+        self.output_id = id.to_string();
         Ok(())
     }
 }

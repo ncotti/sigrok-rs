@@ -460,9 +460,10 @@ impl Device {
     /// * `new_name`: The channel's new name.
     pub fn set_channel_name(&mut self, old_name: &str, new_name: &str) -> Result<(), SrError> {
         let channel = self.get_channel_mut(old_name)?;
+        let cstring_new_name = std::ffi::CString::new(new_name).map_err(|_| SrError::SrNotFound)?;
         sr_try!(sr::sr_dev_channel_name_set(
             channel.get_pointer(),
-            new_name.as_ptr().cast()
+            cstring_new_name.as_ptr().cast()
         ));
         channel.name = new_name.to_string();
         Ok(())
