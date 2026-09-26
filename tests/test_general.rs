@@ -1,5 +1,5 @@
 //! This file exercises general functionalities of the library, like scanning
-//! for devices and running a basic session.
+//! for devices and running a basic sessions.
 
 use sigrok_rs::{Session, SrError, device::Device};
 use std::{
@@ -119,7 +119,7 @@ fn test_run_timeout_measured() -> Result<(), SrError> {
 fn test_run_samples() -> Result<(), SrError> {
     let mut session: Session = Session::try_from("demo")?;
     let output_file = NamedTempFile::new().unwrap();
-    let samples: u64 = 120;
+    let samples: u64 = 40;
 
     session.set_output("ascii", output_file.path())?;
     let data = session.run_samples(samples, Duration::from_secs(1))?;
@@ -132,9 +132,14 @@ fn test_run_samples() -> Result<(), SrError> {
     reader.read_line(&mut line0).unwrap();
     let mut line1: String = String::new();
     reader.read_line(&mut line1).unwrap();
+    let mut line2: String = String::new();
+    reader.read_line(&mut line2).unwrap();
 
     assert!(line0 == "libsigrok 0.5.2\n");
     assert!(line1 == "Acquisition with 8/13 channels at 200 kHz\n");
+    // line should be D0:<samples>\n
+    dbg!(&line2);
+    assert!(line2.len() == (samples + 4) as usize);
 
     Ok(())
 }

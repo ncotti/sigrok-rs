@@ -206,6 +206,8 @@ impl Session {
 
     pub fn run_samples(&mut self, samples: u64, timeout: Duration) -> Result<Vec<u8>, SrError> {
         self.output.lock().unwrap().max_samples = samples;
+        self.device
+            .set_option("limit_samples", &samples.to_string())?;
         self.start()?;
         let timer = std::time::Instant::now();
 
@@ -222,6 +224,7 @@ impl Session {
             thread::sleep(Duration::from_millis(10));
         }
         self.stop()?;
+        self.device.set_option("limit_samples", "0")?;
 
         Ok(self.output.lock().unwrap().data.clone())
     }
@@ -306,7 +309,9 @@ extern "C" fn my_callback(
             // TODO, see what to do here
             //println!("{}", HeaderPacket::from(packet.payload));
         }
-        PacketType::End => {}
+        PacketType::End => {
+            // TODO see what to do here
+        }
         PacketType::Meta => {}
         PacketType::Trigger => {}
         PacketType::Logic => {
@@ -327,39 +332,6 @@ extern "C" fn my_callback(
 
                 output.samples += logic_packet.data.len() as u64;
                 output.data.extend(logic_packet.data);
-
-                let mut p_gstring: *mut _GString = null_mut();
-                assert!(
-                    SrError::SrOk as i32
-                        == unsafe {
-                            sr::sr_output_send(
-                                output.get_pointer(),
-                                p_packet,
-                                std::ptr::addr_of_mut!(p_gstring),
-                            )
-                        }
-                );
-
-                if p_gstring != null_mut() {
-                    let gstring = unsafe { *p_gstring };
-                    if gstring.len > 0 {
-                        let mut file = OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(output.get_filename())
-                            .unwrap();
-
-                        let bytes = unsafe {
-                            std::slice::from_raw_parts(
-                                gstring.str_ as *const u8,
-                                gstring.len as usize,
-                            )
-                        };
-                        file.write(bytes).unwrap();
-                    }
-                    //unsafe { glib::ffi::g_string_free(p_gstring as *mut GString, 1) };
-                }
-
                 // TODO, fix the reason why putting a sleep breaks everything in the callback
                 //thread::sleep(Duration::from_millis(1));
             }
@@ -368,4 +340,33 @@ extern "C" fn my_callback(
         PacketType::FrameEnd => {}
         PacketType::Analog => {}
     };
+
+    let mut p_gstring: *mut _GString = null_mut();
+    assert!(
+        SrError::SrOk as i32
+            == unsafe {
+                sr::sr_output_send(
+                    output.get_pointer(),
+                    p_packet,
+                    std::ptr::addr_of_mut!(p_gstring),
+                )
+            }
+    );
+
+    if p_gstring != null_mut() {
+        let gstring = unsafe { *p_gstring };
+        if gstring.len > 0 {
+            let mut file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(output.get_filename())
+                .unwrap();
+
+            let bytes = unsafe {
+                std::slice::from_raw_parts(gstring.str_ as *const u8, gstring.len as usize)
+            };
+            file.write(bytes).unwrap();
+        }
+        //unsafe { glib::ffi::g_string_free(p_gstring as *mut GString, 1) };
+    }
 }
