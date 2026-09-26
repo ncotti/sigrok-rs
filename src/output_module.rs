@@ -14,8 +14,6 @@ use crate::utils::gslist_to_vec;
 use std::fmt;
 use std::path::Path;
 
-use std::sync::{Arc, Mutex};
-
 /// Generic option struct used by various subsystems, equivalent to `sr_option`.
 #[derive(Debug, Clone)]
 pub struct SrOption {

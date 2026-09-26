@@ -1,4 +1,6 @@
 //! Input module
+//!
+//! TODO: this module is a work in progress. It has not been tested.
 
 use std::ffi::CStr;
 use std::mem;
@@ -11,13 +13,18 @@ use libsigrok_sys::sigrok as sr;
 use crate::output_module::SrOption;
 
 #[derive(Debug, Clone)]
-
+#[allow(missing_docs)]
 pub struct InputModule {
-    name: String,
-    description: String,
-    id: String,
-    file_extensions: Vec<String>,
-    options: Vec<SrOption>,
+    /// name
+    pub name: String,
+    /// description
+    pub description: String,
+    /// id
+    pub id: String,
+    /// file_extensions
+    pub file_extensions: Vec<String>,
+    /// options
+    pub options: Vec<SrOption>,
 }
 
 impl InputModule {

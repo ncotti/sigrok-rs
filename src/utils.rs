@@ -1,7 +1,5 @@
 //! This module includes utility functions to work with some of glib and
-//! libsigrok data types more easily
-//!
-//!
+//! libsigrok data types more easily.
 
 use std::{ffi::CStr, ptr::null_mut};
 
@@ -29,7 +27,6 @@ use crate::{
 ///     pub next: *mut GSList,
 /// }
 /// ```
-
 pub fn gslist_to_vec<T>(list: *mut GSList) -> Vec<*mut T> {
     let mut data: Vec<*mut T> = Vec::new();
     let mut p_list_node: *mut GSList = list;

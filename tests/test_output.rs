@@ -1,7 +1,5 @@
 //! This file test the different output modules
 
-use std::time::Duration;
-
 use sigrok_rs::{Session, SrError};
 
 /// Scanning for output modules should be possible from the session level.

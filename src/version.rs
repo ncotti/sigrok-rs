@@ -3,7 +3,7 @@
 use libsigrok_sys::sigrok as sr;
 use std::fmt;
 
-/// Version information, in the format of <major>.<minor>.<patch>
+/// Version information, in the format `<major>.<minor>.<patch>`
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Version {
     /// Version major number.
@@ -21,7 +21,7 @@ impl fmt::Display for Version {
 }
 
 /// Returns libsigrok library version
-pub fn get_sr_lib_version() -> Version {
+pub fn get_lib_version() -> Version {
     Version {
         major: unsafe { sr::sr_lib_version_current_get() as u32 },
         minor: unsafe { sr::sr_lib_version_revision_get() as u32 },
@@ -31,7 +31,7 @@ pub fn get_sr_lib_version() -> Version {
 
 /// Returns sigrok package version, i.e., the version of the binary as
 /// downloaded from the package manager.
-pub fn get_sr_package_version() -> Version {
+pub fn get_package_version() -> Version {
     Version {
         major: unsafe { sr::sr_package_version_major_get() as u32 },
         minor: unsafe { sr::sr_package_version_minor_get() as u32 },

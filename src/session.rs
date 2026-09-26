@@ -44,7 +44,9 @@ pub struct Session {
     output: Arc<Mutex<OutputModule>>,
     /// Handle for the sigrok thread.
     thread_handle: Option<thread::JoinHandle<()>>,
+    /// Output module ID.
     output_id: String,
+    /// Output module filename.
     output_filename: String,
 }
 
@@ -161,6 +163,9 @@ impl Session {
         Ok(devices)
     }
 
+    /// Returns a list of all possible output modules.
+    ///
+    /// Output modules are configured by calling `self.set_output()`.
     pub fn scan_output() -> Result<Vec<OutputModuleInfo>, SrError> {
         let mut p_context: *mut sr_context = null_mut();
         sr_try!(sr::sr_init(&mut p_context));
@@ -171,6 +176,7 @@ impl Session {
         Ok(output_modules)
     }
 
+    /// TODO
     pub fn set_trigger(&self, event: TriggerEvent) -> Result<(), SrError> {
         let trigger: Trigger = Trigger::new(
             String::from("name"),
@@ -184,21 +190,7 @@ impl Session {
         Ok(())
     }
 
-    /// Runs until the trigger or "ms" have passed
-    /// Blocking
-    pub fn run(&mut self) -> Result<(), SrError> {
-        sr_try!(sr::sr_session_datafeed_callback_add(
-            self.p_session,
-            Some(my_callback),
-            self.output.lock().unwrap().get_pointer().cast_mut().cast(),
-        ));
-        sr_try!(sr::sr_session_start(self.p_session));
-        sr_try!(sr::sr_session_run(self.p_session));
-        self.stop(true)?;
-        Ok(())
-    }
-
-    /// Runs the session for `timeout` time and blocks until the time passes.
+    /// Runs the session for `timeout` time.
     pub fn run_timeout(&mut self, timeout: Duration) -> Result<Vec<u8>, SrError> {
         // Although some devices have the "limit_time" option for ending the
         // data acquisition, this is not available for all devices.
@@ -210,20 +202,19 @@ impl Session {
         Ok(data)
     }
 
+    /// Runs the session until a given amount of samples are retrieved.
     pub fn run_samples(&mut self, samples: u64) -> Result<Vec<u8>, SrError> {
         self.device
             .set_option("limit_samples", &samples.to_string())?;
 
         self.start()?;
         self.stop(false)?;
-        // TODO, can't go back to continous mode.
-        //self.device.set_option("limit_samples", "0")?;
 
         Ok(self.output.lock().unwrap().data.clone())
     }
 
     /// Starts the session in a new thread.
-    pub fn start(&mut self) -> Result<(), SrError> {
+    fn start(&mut self) -> Result<(), SrError> {
         *(self.output.lock().unwrap()) = OutputModule::new(
             &self.output_id,
             &self.output_filename,
@@ -235,7 +226,7 @@ impl Session {
             (&mut self.output as *mut Arc<Mutex<OutputModule>>) as *mut c_void;
         sr_try!(sr::sr_session_datafeed_callback_add(
             self.p_session,
-            Some(my_callback),
+            Some(datafeed_callback),
             p_data,
         ));
         sr_try!(sr::sr_session_stopped_callback_set(
@@ -256,7 +247,7 @@ impl Session {
     ///
     /// Sessions should be started with the `start()` method. This function
     /// will not return an error if the session was not running.
-    pub fn stop(&mut self, force: bool) -> Result<(), SrError> {
+    fn stop(&mut self, force: bool) -> Result<(), SrError> {
         if unsafe { sr::sr_session_is_running(self.p_session) } == 1 && force {
             sr_try!(sr::sr_session_stop(self.p_session));
         }
@@ -269,6 +260,12 @@ impl Session {
         Ok(())
     }
 
+    /// Sets the output module parameters.
+    ///
+    /// The output module must be created right before starting the session,
+    /// because it does not get updated if a device parameter is changed
+    /// after being created. Therefore, this function will not check
+    /// whether the provided ID and filename are valid ones.
     pub fn set_output(&mut self, id: &str, filename: impl AsRef<Path>) -> Result<(), SrError> {
         let filename: &Path = filename.as_ref();
         self.output_filename = filename.to_string_lossy().to_string();
@@ -277,12 +274,16 @@ impl Session {
     }
 }
 
-extern "C" fn stopped_callback(cb_data: *mut std::ffi::c_void) {
-    println!("Session stopped");
-}
+/// This function will get called whenever a session is stopped.
+///
+/// As of right now, it is left as a placeholder.
+extern "C" fn stopped_callback(_cb_data: *mut std::ffi::c_void) {}
 
-extern "C" fn my_callback(
-    p_device: *const sr_dev_inst,
+/// This function is called whenever a new packet is received while a session
+/// is running. This function gets executed in a different thread than the
+/// main one.
+extern "C" fn datafeed_callback(
+    _p_device: *const sr_dev_inst,
     p_packet: *const sr_datafeed_packet,
     p_data: *mut std::ffi::c_void,
 ) {
@@ -303,20 +304,13 @@ extern "C" fn my_callback(
     let mut output = output.lock().unwrap();
 
     match packet_type {
-        PacketType::Header => {
-            // TODO, see what to do here
-            //println!("{}", HeaderPacket::from(packet.payload));
-        }
-        PacketType::End => {
-            // TODO see what to do here
-        }
+        PacketType::Header => {}
+        PacketType::End => {}
         PacketType::Meta => {}
         PacketType::Trigger => {}
         PacketType::Logic => {
             let logic_packet: LogicPacket = LogicPacket::from(packet.payload);
             output.data.extend(logic_packet.data);
-            // TODO, fix the reason why putting a sleep breaks everything in the callback
-            //thread::sleep(Duration::from_millis(1));
         }
         PacketType::FrameBegin => {}
         PacketType::FrameEnd => {}
@@ -349,6 +343,6 @@ extern "C" fn my_callback(
             };
             file.write(bytes).unwrap();
         }
-        //unsafe { glib::ffi::g_string_free(p_gstring as *mut GString, 1) };
+        unsafe { glib::ffi::g_string_free(p_gstring as *mut glib::ffi::GString, 1) };
     }
 }
