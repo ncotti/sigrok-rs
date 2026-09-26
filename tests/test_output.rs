@@ -26,7 +26,7 @@ fn test_ascii() -> Result<(), SrError> {
     let filename = "tmp/ascii.txt";
 
     session.set_output("ascii", filename)?;
-    session.run_samples(10, Duration::from_millis(1000))?;
+    session.run_samples(10)?;
 
     assert!(std::fs::exists(filename).unwrap());
 
@@ -39,7 +39,7 @@ fn test_binary() -> Result<(), SrError> {
     let filename = "tmp/binary.bin";
 
     session.set_output("binary", filename)?;
-    session.run_samples(10, Duration::from_millis(1000))?;
+    session.run_samples(10)?;
 
     assert!(std::fs::exists(filename).unwrap());
 
@@ -52,7 +52,7 @@ fn test_bits() -> Result<(), SrError> {
     let filename = "tmp/bits.txt";
 
     session.set_output("bits", filename)?;
-    session.run_samples(10, Duration::from_millis(1000))?;
+    session.run_samples(10)?;
 
     assert!(std::fs::exists(filename).unwrap());
 
@@ -65,7 +65,7 @@ fn test_hex() -> Result<(), SrError> {
     let filename = "tmp/hex.txt";
 
     session.set_output("hex", filename)?;
-    session.run_samples(10, Duration::from_millis(1000))?;
+    session.run_samples(10)?;
 
     assert!(std::fs::exists(filename).unwrap());
 
@@ -76,7 +76,7 @@ fn test_hex() -> Result<(), SrError> {
 fn test_null() -> Result<(), SrError> {
     let mut session: Session = Session::try_from("demo")?;
 
-    session.run_samples(10, Duration::from_millis(1000))?;
+    session.run_samples(10)?;
 
     Ok(())
 }
@@ -87,7 +87,33 @@ fn test_vcd() -> Result<(), SrError> {
     let filename = "tmp/vcd.vcd";
 
     session.set_output("vcd", filename)?;
-    session.run_samples(10, Duration::from_millis(1000))?;
+    session.run_samples(10)?;
+
+    assert!(std::fs::exists(filename).unwrap());
+
+    Ok(())
+}
+
+#[test]
+fn test_csv() -> Result<(), SrError> {
+    let mut session: Session = Session::try_from("demo")?;
+    let filename = "tmp/csv.csv";
+
+    session.set_output("csv", filename)?;
+    session.run_samples(10)?;
+
+    assert!(std::fs::exists(filename).unwrap());
+
+    Ok(())
+}
+
+#[test]
+fn test_wavedrom() -> Result<(), SrError> {
+    let mut session: Session = Session::try_from("demo")?;
+    let filename = "tmp/wave.json";
+
+    session.set_output("wavedrom", filename)?;
+    session.run_samples(10)?;
 
     assert!(std::fs::exists(filename).unwrap());
 
