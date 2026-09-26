@@ -136,6 +136,10 @@ impl OutputModule {
             std::fs::remove_file(&filename).unwrap();
         }
 
+        if let Some(parent) = filename.as_ref().parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+
         let filename = filename.as_ref().to_string_lossy().to_string();
         let sigrok_filename = format!("sr_{}", &filename);
 
@@ -203,13 +207,13 @@ pub struct OutputModuleInfo {
     /// Raw C-FFI pointer to the output module info.
     p_module: *const sr_output_module,
     /// Output module ID, used to uniquely identify the output module.
-    id: String,
+    pub id: String,
     /// Name of the output module. Just informative.
-    name: String,
+    pub name: String,
     /// Output module's description. Just informative.
-    description: String,
+    pub description: String,
     /// Configuration options.
-    options: Vec<SrOption>,
+    pub options: Vec<SrOption>,
 }
 
 impl Drop for OutputModule {

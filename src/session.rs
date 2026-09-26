@@ -17,7 +17,7 @@ use libsigrok_sys::sigrok::{self as sr, _GString, sr_datafeed_packet, sr_dev_ins
 
 use crate::{
     Device, SrError,
-    output_module::OutputModule,
+    output_module::{OutputModule, OutputModuleInfo},
     packets::LogicPacket,
     sr_try,
     trigger::{Trigger, TriggerEvent},
@@ -38,7 +38,7 @@ pub struct Session {
     p_session: *mut sr_session,
     /// Device associated with the session. There can only be one device
     /// per session.
-    device: Device,
+    pub device: Device,
     // input: InputModule,
     /// Output module
     output: Arc<Mutex<OutputModule>>,
@@ -155,6 +155,16 @@ impl Session {
 
         unsafe { sr::sr_exit(p_context) };
         Ok(devices)
+    }
+
+    pub fn scan_output() -> Result<Vec<OutputModuleInfo>, SrError> {
+        let mut p_context: *mut sr_context = null_mut();
+        sr_try!(sr::sr_init(&mut p_context));
+
+        let output_modules = OutputModuleInfo::scan();
+
+        unsafe { sr::sr_exit(p_context) };
+        Ok(output_modules)
     }
 
     pub fn set_trigger(&self, event: TriggerEvent) -> Result<(), SrError> {
@@ -315,8 +325,6 @@ extern "C" fn my_callback(
                     logic_packet.data.resize(packet_data_len as usize, 0);
                 }
 
-                dbg!(logic_packet.data.len());
-                dbg!(output.max_samples);
                 output.samples += logic_packet.data.len() as u64;
                 output.data.extend(logic_packet.data);
 
