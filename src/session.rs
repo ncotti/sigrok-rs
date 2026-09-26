@@ -42,6 +42,8 @@ pub struct Session {
     // input: InputModule,
     /// Output module
     output: Arc<Mutex<OutputModule>>,
+    /// Handle for the sigrok thread.
+    thread_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl Drop for Session {
@@ -126,6 +128,7 @@ impl Session {
             p_session: p_session,
             device: device,
             output: output,
+            thread_handle: None,
         };
 
         Ok(session)
@@ -169,7 +172,7 @@ impl Session {
 
     /// Runs until the trigger or "ms" have passed
     /// Blocking
-    pub fn run(&self) -> Result<(), SrError> {
+    pub fn run(&mut self) -> Result<(), SrError> {
         sr_try!(sr::sr_session_datafeed_callback_add(
             self.p_session,
             Some(my_callback),
@@ -184,11 +187,11 @@ impl Session {
     /// Runs the session for `timeout` time and blocks until the time passes.
     ///
     /// Timing is not precise, and the session may run for more or less time.
-    pub fn run_timeout(&mut self, timeout: Duration) -> Result<(), SrError> {
+    pub fn run_timeout(&mut self, timeout: Duration) -> Result<Vec<u8>, SrError> {
         self.start()?;
         thread::sleep(timeout);
         self.stop()?;
-        Ok(())
+        Ok(self.output.lock().unwrap().data.clone())
     }
 
     pub fn run_samples(&mut self, samples: u64, timeout: Duration) -> Result<Vec<u8>, SrError> {
@@ -196,20 +199,27 @@ impl Session {
         self.start()?;
         let timer = std::time::Instant::now();
 
-        while self.output.lock().unwrap().samples < samples || timer.elapsed() < timeout {
+        while timer.elapsed() < timeout {
+            let lock = self.output.try_lock();
+            let current_samples = if lock.is_ok() {
+                lock.unwrap().samples
+            } else {
+                0
+            };
+            if current_samples == samples {
+                break;
+            }
             thread::sleep(Duration::from_millis(10));
         }
         self.stop()?;
 
-        if self.output.lock().unwrap().samples == samples {
-            Ok(self.output.lock().unwrap().data.clone())
-        } else {
-            Err(SrError::SrErrTimeout)
-        }
+        Ok(self.output.lock().unwrap().data.clone())
     }
 
     /// Starts the session in a new thread.
     pub fn start(&mut self) -> Result<(), SrError> {
+        self.output.lock().unwrap().data = Vec::new();
+        self.output.lock().unwrap().samples = 0;
         let p_data: *mut c_void =
             (&mut self.output as *mut Arc<Mutex<OutputModule>>) as *mut c_void;
         sr_try!(sr::sr_session_datafeed_callback_add(
@@ -225,9 +235,9 @@ impl Session {
 
         sr_try!(sr::sr_session_start(self.p_session));
         let th_p_session: usize = self.p_session as usize;
-        thread::spawn(move || {
+        self.thread_handle = Some(thread::spawn(move || {
             unsafe { sr::sr_session_run(th_p_session as *mut sr_session) };
-        });
+        }));
         Ok(())
     }
 
@@ -235,12 +245,15 @@ impl Session {
     ///
     /// Sessions should be started with the `start()` method. This function
     /// will not return an error if the session was not running.
-    pub fn stop(&self) -> Result<(), SrError> {
+    pub fn stop(&mut self) -> Result<(), SrError> {
         if unsafe { sr::sr_session_is_running(self.p_session) } == 1 {
             sr_try!(sr::sr_session_stop(self.p_session));
         }
-        // TODO, move to stopped_callback
-        thread::sleep(Duration::from_secs(1));
+        if self.thread_handle.is_some() {
+            let handle = self.thread_handle.take().unwrap();
+            handle.join().expect("Thread should be joinable.");
+        }
+
         sr_try!(sr::sr_session_datafeed_callback_remove_all(self.p_session));
         Ok(())
     }
@@ -302,8 +315,10 @@ extern "C" fn my_callback(
                     logic_packet.data.resize(packet_data_len as usize, 0);
                 }
 
+                dbg!(logic_packet.data.len());
+                dbg!(output.max_samples);
                 output.samples += logic_packet.data.len() as u64;
-                output.data = logic_packet.data;
+                output.data.extend(logic_packet.data);
 
                 let mut p_gstring: *mut _GString = null_mut();
                 assert!(
