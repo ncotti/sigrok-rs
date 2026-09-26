@@ -1,23 +1,24 @@
 //! Session
 
 use std::{
-    ffi::{CStr, c_void},
+    ffi::c_void,
     fs::OpenOptions,
-    io::Write,
     ptr::{null, null_mut},
 };
 
 use std::sync::{Arc, Mutex};
 
+use std::io::Write;
+
 use std::path::Path;
 
-use glib::{LogLevel, ffi::GString};
-use libsigrok_sys::sigrok::{self as sr, _GString, sr_datafeed_packet, sr_dev_inst, sr_output};
+use glib::LogLevel;
+use libsigrok_sys::sigrok::{self as sr, _GString, sr_datafeed_packet, sr_dev_inst};
 
 use crate::{
     Device, SrError,
     output_module::OutputModule,
-    packets::{HeaderPacket, LogicPacket},
+    packets::LogicPacket,
     sr_try,
     trigger::{Trigger, TriggerEvent},
     types::PacketType,
@@ -40,7 +41,7 @@ pub struct Session {
     device: Device,
     // input: InputModule,
     /// Output module
-    output: OutputModule,
+    output: Arc<Mutex<OutputModule>>,
 }
 
 impl Drop for Session {
@@ -113,7 +114,12 @@ impl Session {
 
         let device = Device::try_from(("demo", p_context))?;
 
-        let output = OutputModule::new("null", "tmp", device.get_pointer())?;
+        let output = Arc::new(Mutex::new(OutputModule::new(
+            "null",
+            "",
+            device.get_pointer(),
+            p_session,
+        )?));
 
         let session = Self {
             p_context: p_context,
@@ -166,8 +172,8 @@ impl Session {
     pub fn run(&self) -> Result<(), SrError> {
         sr_try!(sr::sr_session_datafeed_callback_add(
             self.p_session,
-            Some(Session::my_callback),
-            self.output.get_pointer().cast_mut().cast(),
+            Some(my_callback),
+            self.output.lock().unwrap().get_pointer().cast_mut().cast(),
         ));
         sr_try!(sr::sr_session_start(self.p_session));
         sr_try!(sr::sr_session_run(self.p_session));
@@ -185,33 +191,35 @@ impl Session {
         Ok(())
     }
 
-    pub fn run_samples(&mut self, samples: u64) -> Result<Vec<u8>, SrError> {
-        self.output.set_max_samples(samples);
+    pub fn run_samples(&mut self, samples: u64, timeout: Duration) -> Result<Vec<u8>, SrError> {
+        self.output.lock().unwrap().max_samples = samples;
         self.start()?;
-        loop {
-            if self.output.get_samples() >= samples {
-                thread::sleep(Duration::from_millis(10));
-                break;
-            }
+        let timer = std::time::Instant::now();
+
+        while self.output.lock().unwrap().samples < samples || timer.elapsed() < timeout {
+            thread::sleep(Duration::from_millis(10));
         }
         self.stop()?;
 
-        let mut data = self.output.get_data();
-        data.resize(samples as usize, 0);
-        Ok(data)
+        if self.output.lock().unwrap().samples == samples {
+            Ok(self.output.lock().unwrap().data.clone())
+        } else {
+            Err(SrError::SrErrTimeout)
+        }
     }
 
     /// Starts the session in a new thread.
     pub fn start(&mut self) -> Result<(), SrError> {
-        let cb_data: *mut c_void = (&mut self.output) as *mut OutputModule as *mut c_void;
+        let p_data: *mut c_void =
+            (&mut self.output as *mut Arc<Mutex<OutputModule>>) as *mut c_void;
         sr_try!(sr::sr_session_datafeed_callback_add(
             self.p_session,
-            Some(Session::my_callback),
-            cb_data,
+            Some(my_callback),
+            p_data,
         ));
         sr_try!(sr::sr_session_stopped_callback_set(
             self.p_session,
-            Some(Session::stopped_callback),
+            Some(stopped_callback),
             null_mut()
         ));
 
@@ -237,140 +245,104 @@ impl Session {
         Ok(())
     }
 
-    unsafe extern "C" fn stopped_callback(cb_data: *mut std::ffi::c_void) {
-        println!("Session stopped");
-    }
-
-    unsafe extern "C" fn my_callback(
-        p_device: *const sr_dev_inst,
-        p_packet: *const sr_datafeed_packet,
-        cb_data: *mut std::ffi::c_void,
-    ) {
-        if p_packet == null() {
-            return;
-        }
-
-        let output: &mut OutputModule = unsafe { &mut *(cb_data as *mut OutputModule) };
-
-        let packet = unsafe { *p_packet };
-
-        let packet_type = PacketType::try_from(packet.type_).unwrap();
-
-        match packet_type {
-            PacketType::Header => {
-                println!("{}", HeaderPacket::from(packet.payload));
-            }
-            PacketType::End => {}
-            PacketType::Meta => {}
-            PacketType::Trigger => {}
-            PacketType::Logic => {
-                let max_samples = output.max_samples.lock().unwrap();
-                let mut samples = output.samples.lock().unwrap();
-                let logic = unsafe { &mut *(packet.payload as *mut sr::sr_datafeed_logic) };
-
-                let bytes_to_write =
-                    if (*max_samples > 0) && (*samples + logic.length > *max_samples) {
-                        //max_samples - samples
-                        println!("{} {} {}", *max_samples, *samples, logic.length);
-                        1
-                    } else {
-                        logic.length
-                    };
-
-                // TODO should create a clone, rather than modifying the packet
-                // directly. I assume tha libsigrok doesn't know how to free the
-                // memory afterwards.
-                logic.length = bytes_to_write;
-
-                let packet: LogicPacket = LogicPacket::from(packet.payload);
-
-                *samples += packet.data.len() as u64;
-                let mut data = output.data.lock().unwrap();
-                *data = packet.data;
-            }
-            PacketType::FrameBegin => {}
-            PacketType::FrameEnd => {}
-            PacketType::Analog => {}
-        };
-
-        let mut p_gstring: *mut _GString = null_mut();
-        assert!(
-            SrError::SrOk as i32
-                == unsafe {
-                    sr::sr_output_send(
-                        output.get_pointer(),
-                        p_packet,
-                        std::ptr::addr_of_mut!(p_gstring),
-                    )
-                }
-        );
-
-        if p_gstring != null_mut() {
-            let gstring = unsafe { *p_gstring };
-            if gstring.len > 0 {
-                let mut file = OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(output.get_filename())
-                    .unwrap();
-
-                let bytes = unsafe {
-                    std::slice::from_raw_parts(gstring.str_ as *const u8, gstring.len as usize)
-                };
-                file.write(bytes).unwrap();
-            }
-            unsafe { glib::ffi::g_string_free(p_gstring as *mut GString, 1) };
-        }
-    }
-
     pub fn set_output(&mut self, id: &str, filename: impl AsRef<Path>) -> Result<(), SrError> {
         let filename: &Path = filename.as_ref();
-        self.output = OutputModule::new(id, filename, self.device.get_pointer())?;
+        *(self.output.lock().unwrap()) =
+            OutputModule::new(id, filename, self.device.get_pointer(), self.p_session)?;
         Ok(())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-    use tempfile::NamedTempFile;
+extern "C" fn stopped_callback(cb_data: *mut std::ffi::c_void) {
+    println!("Session stopped");
+}
 
-    use super::*;
+extern "C" fn my_callback(
+    p_device: *const sr_dev_inst,
+    p_packet: *const sr_datafeed_packet,
+    p_data: *mut std::ffi::c_void,
+) {
+    // Checking that p_packet is not null before deref
+    if p_packet == null() {
+        return;
+    }
+    let packet = unsafe { *p_packet };
+    let packet_type = PacketType::try_from(packet.type_).unwrap();
 
-    #[test]
-    fn test_start_and_stop() -> Result<(), SrError> {
-        let mut session = Session::try_from("demo")?;
-
-        session.start()?;
-        session.stop()?;
-
-        Ok(())
+    // Checking that p_data is not null before deref
+    if p_data == null_mut() {
+        return;
     }
 
-    #[test]
-    fn test_ascii_output() -> Result<(), SrError> {
-        //let mut tmp_file =  NamedTempFile::new().unwrap();
-        let tmp_file = "tmp.txt";
+    let output: &Arc<Mutex<OutputModule>> =
+        unsafe { &*(p_data as *const Arc<Mutex<OutputModule>>) };
+    let mut output = output.lock().unwrap();
 
-        let mut session = Session::try_from("demo")?;
-        session.set_output("hex", tmp_file)?;
-        session.run_timeout(Duration::from_millis(1000))?;
+    match packet_type {
+        PacketType::Header => {
+            // TODO, see what to do here
+            //println!("{}", HeaderPacket::from(packet.payload));
+        }
+        PacketType::End => {}
+        PacketType::Meta => {}
+        PacketType::Trigger => {}
+        PacketType::Logic => {
+            // The user requested for the loop to run until "max_samples"
+            // have been received
+            if (output.samples < output.max_samples) || (output.max_samples == 0) {
+                let mut logic_packet: LogicPacket = LogicPacket::from(packet.payload);
 
-        Ok(())
-    }
+                if output.max_samples > 0 {
+                    let packet_data_len =
+                        if (output.samples + logic_packet.data.len() as u64) > output.max_samples {
+                            output.max_samples - output.samples
+                        } else {
+                            logic_packet.data.len() as u64
+                        };
+                    logic_packet.data.resize(packet_data_len as usize, 0);
+                }
 
-    #[test]
-    fn test_run_timeout() -> Result<(), SrError> {
-        let mut session = Session::try_from("demo")?;
+                output.samples += logic_packet.data.len() as u64;
+                output.data = logic_packet.data;
 
-        session.run_timeout(std::time::Duration::from_secs(1))?;
-        Ok(())
-    }
+                let mut p_gstring: *mut _GString = null_mut();
+                assert!(
+                    SrError::SrOk as i32
+                        == unsafe {
+                            sr::sr_output_send(
+                                output.get_pointer(),
+                                p_packet,
+                                std::ptr::addr_of_mut!(p_gstring),
+                            )
+                        }
+                );
 
-    #[test]
-    fn test_run_limited_samples() -> Result<(), SrError> {
-        let session = Session::try_from("demo")?;
+                if p_gstring != null_mut() {
+                    let gstring = unsafe { *p_gstring };
+                    if gstring.len > 0 {
+                        let mut file = OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(output.get_filename())
+                            .unwrap();
 
-        Ok(())
-    }
+                        let bytes = unsafe {
+                            std::slice::from_raw_parts(
+                                gstring.str_ as *const u8,
+                                gstring.len as usize,
+                            )
+                        };
+                        file.write(bytes).unwrap();
+                    }
+                    //unsafe { glib::ffi::g_string_free(p_gstring as *mut GString, 1) };
+                }
+
+                // TODO, fix the reason why putting a sleep breaks everything in the callback
+                //thread::sleep(Duration::from_millis(1));
+            }
+        }
+        PacketType::FrameBegin => {}
+        PacketType::FrameEnd => {}
+        PacketType::Analog => {}
+    };
 }

@@ -4,7 +4,9 @@ use std::ffi::CStr;
 use std::ptr::{null, null_mut};
 
 use glib::ffi::GVariant;
-use libsigrok_sys::sigrok::{self as sr, sr_dev_inst, sr_option, sr_output, sr_output_module};
+use libsigrok_sys::sigrok::{
+    self as sr, sr_dev_inst, sr_option, sr_output, sr_output_module, sr_session,
+};
 
 use crate::types::SrError;
 use crate::utils::gslist_to_vec;
@@ -87,22 +89,27 @@ impl fmt::Display for SrOption {
 pub struct OutputModule {
     /// Pointer to a C-FFI output module.
     p_output: *const sr_output,
+    /// A copy of the C-FFI session pointer.
+    ///
+    /// This pointer is required so that the the callback may stop the session
+    /// on a different thread.
+    pub p_session: *mut sr_session,
     /// All info related to the output module
     info: OutputModuleInfo,
     /// Output will be written to this file
     filename: String,
     /// Number of samples that have been read from the Logic channel since
     /// the last session was started.
-    pub samples: Arc<Mutex<u64>>,
+    pub samples: u64,
     /// Last batch of samples that has been read from the device's
     /// Logic channel.
     ///
     /// Each bit represents the value from the logic channel, from
     /// D7 (MSB) to D0 (LSB).
-    pub data: Arc<Mutex<Vec<u8>>>,
+    pub data: Vec<u8>,
     /// If the session is running until getting "max_samples" and stopping,
     /// then a value greater than zero here will shutdown the session
-    pub max_samples: Arc<Mutex<u64>>,
+    pub max_samples: u64,
 }
 
 impl OutputModule {
@@ -121,9 +128,14 @@ impl OutputModule {
         id: &str,
         filename: impl AsRef<Path>,
         p_device: *const sr_dev_inst,
+        p_session: *mut sr_session,
     ) -> Result<OutputModule, SrError> {
         // The filename requested by Sigrok's API seems to not be used, so
         // just give it a "mock name" just in case.
+        if filename.as_ref().is_file() {
+            std::fs::remove_file(&filename).unwrap();
+        }
+
         let filename = filename.as_ref().to_string_lossy().to_string();
         let sigrok_filename = format!("sr_{}", &filename);
 
@@ -142,11 +154,12 @@ impl OutputModule {
 
         Ok(OutputModule {
             p_output: p_output,
+            p_session: p_session,
             info: info,
             filename: filename,
-            samples: Arc::new(Mutex::new(0)),
-            data: Arc::new(Mutex::new(Vec::new())),
-            max_samples: Arc::new(Mutex::new(0)),
+            samples: 0,
+            data: Vec::new(),
+            max_samples: 0,
         })
     }
 
@@ -165,54 +178,10 @@ impl OutputModule {
         &self.info
     }
 
-    /// Resets the sample count.
-    pub fn reset_samples(&mut self) {
-        let mut samples = self.samples.lock().unwrap();
-        let mut data = self.data.lock().unwrap();
-        *samples = 0;
-        (*data).clear();
-    }
-
     /// Updates the sample quantity and the last data received.
     pub fn update_samples(&mut self, new_data: Vec<u8>) {
-        let mut samples = self.samples.lock().unwrap();
-        let mut data = self.data.lock().unwrap();
-        *samples += data.len() as u64;
-        *data = new_data;
-    }
-
-    /// Returns the last values read from the Logic channels until now.
-    ///
-    /// All prior values are discarded, only the last data feed packet is
-    /// retained.
-    pub fn get_data(&self) -> Vec<u8> {
-        let data = self.data.lock().unwrap();
-        (*data).clone()
-    }
-
-    /// Returns the total number of samples that have been read from the Logic
-    /// channels until now.
-    pub fn get_samples(&self) -> u64 {
-        let samples = self.samples.lock().unwrap();
-        *samples
-    }
-
-    /// Sets the maximum number of samples for the current session.
-    ///
-    /// If a `max_samples > 0`, then the session will be stopped when exactly
-    /// that amount of samples have been read.
-    pub fn set_max_samples(&mut self, max_samples: u64) {
-        let mut max_samples_mutex = self.max_samples.lock().unwrap();
-        *max_samples_mutex = max_samples;
-    }
-
-    /// Returns the maximum amount of samples for the current session.
-    ///
-    /// A value of `0` indicates that the session does not have a limit of
-    /// samples.
-    pub fn get_max_samples(&self) -> u64 {
-        let max_samples = self.max_samples.lock().unwrap();
-        *max_samples
+        self.samples += new_data.len() as u64;
+        self.data = new_data;
     }
 }
 

@@ -98,6 +98,30 @@ impl LogicPacket {
         }
         channel_data
     }
+
+    /// A logic packet from sigrok has three values:
+    /// * `length: u64`.
+    /// * `unitsize: u16`.
+    /// * `data: *mut c_void`.
+    ///
+    /// This function will create a new logic packet, with the same unit size
+    /// and pointing to the same data, but with a reduced `length`.
+    ///
+    /// This function will panic!() if the new length is less than the length
+    /// the packet already had.
+    pub fn resize_payload(payload: *const c_void, new_length: u64) -> sr::sr_datafeed_logic {
+        let logic = unsafe { &*(payload as *const sr::sr_datafeed_logic) };
+
+        if new_length > logic.length {
+            panic!("Length for new packet is greater than available length");
+        }
+
+        sr::sr_datafeed_logic {
+            length: new_length,
+            unitsize: logic.unitsize,
+            data: logic.data,
+        }
+    }
 }
 
 impl fmt::Display for LogicPacket {
