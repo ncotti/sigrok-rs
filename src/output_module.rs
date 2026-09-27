@@ -102,6 +102,14 @@ pub struct OutputModule {
     /// Each bit represents the value from the logic channel, from
     /// D7 (MSB) to D0 (LSB).
     pub data: Vec<u8>,
+    /// Maximum samples to receive after a trigger condition is met.
+    /// If there is no trigger, then this is just the number of samples to
+    /// be collected before stopping.
+    pub max_samples: u64,
+    /// Status of the trigger. A `true` value means that the samples should
+    /// be recorded, or that the trigger has not been configured. A `false`
+    /// value means that samples will not be recorded.
+    pub triggered: bool,
 }
 
 impl OutputModule {
@@ -112,6 +120,8 @@ impl OutputModule {
     ///
     /// * `filename`: Output file where information will be stored.
     ///
+    /// * `max_samples`: Max samples to be stored in the output file.
+    ///
     /// * `p_device`: C-FFI pointer to the device connected to the output
     /// module. Although the device and the output format are independent, from
     /// the device details like the sample rate and the number of channels are
@@ -119,6 +129,7 @@ impl OutputModule {
     pub fn new(
         id: &str,
         filename: impl AsRef<Path>,
+        max_samples: u64,
         p_device: *const sr_dev_inst,
         p_session: *mut sr_session,
     ) -> Result<OutputModule, SrError> {
@@ -154,6 +165,8 @@ impl OutputModule {
             info: info,
             filename: filename,
             data: Vec::new(),
+            max_samples: max_samples,
+            triggered: true,
         })
     }
 

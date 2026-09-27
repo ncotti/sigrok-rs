@@ -17,6 +17,7 @@ use libsigrok_sys::sigrok::{self as sr, _GString, sr_datafeed_packet, sr_dev_ins
 
 use crate::{
     Device, SrError,
+    device::Channel,
     output_module::{OutputModule, OutputModuleInfo},
     packets::LogicPacket,
     sr_try,
@@ -48,6 +49,11 @@ pub struct Session {
     output_id: String,
     /// Output module filename.
     output_filename: String,
+    /// Trigger event for the session.
+    trigger: Option<Trigger>,
+    /// Maximum amount of time a session can run, before being abruptly
+    /// interrupted.
+    timeout: Duration,
 }
 
 impl Drop for Session {
@@ -123,6 +129,7 @@ impl Session {
         let output = Arc::new(Mutex::new(OutputModule::new(
             "null",
             "",
+            u64::MAX,
             device.get_pointer(),
             p_session,
         )?));
@@ -135,6 +142,8 @@ impl Session {
             thread_handle: None,
             output_id: String::from("null"),
             output_filename: String::new(),
+            trigger: None,
+            timeout: Duration::from_secs(1),
         };
 
         Ok(session)
@@ -176,52 +185,139 @@ impl Session {
         Ok(output_modules)
     }
 
-    /// TODO
-    pub fn set_trigger(&self, event: TriggerEvent) -> Result<(), SrError> {
-        let trigger: Trigger = Trigger::new(
-            String::from("name"),
-            self.device.get_channel("0").unwrap(),
-            event,
-        )?;
-        sr_try!(sr::sr_session_trigger_set(
-            self.p_session,
-            trigger.get_pointer()
-        ));
+    /// Creates a new trigger for the session.
+    ///
+    /// The trigger is defined by a set of "channel / event" couples.
+    /// All elements in the vector must be fulfilled for the trigger to
+    /// activate, like a logical "AND".
+    ///
+    /// This function will fail if any of the channels' names are incorrect,
+    /// or the `events` vector is empty.
+    pub fn set_trigger(
+        &mut self,
+        name: &str,
+        events: Vec<(&str, TriggerEvent)>,
+    ) -> Result<(), SrError> {
+        if events.is_empty() {
+            return Err(SrError::SrErrArg);
+        }
+
+        let mut channel_events: Vec<(&Channel, TriggerEvent)> = Vec::new();
+
+        for (channel_name, trigger_event) in events {
+            let channel = self.device.get_channel(channel_name)?;
+            channel_events.push((channel, trigger_event));
+        }
+
+        let trigger: Trigger = Trigger::new(String::from(name), channel_events)?;
+
+        self.trigger = Some(trigger);
+        Ok(())
+    }
+
+    /// Adds a stage to an already existing trigger.
+    ///
+    /// This is a new condition, which must be fulfilled after all other
+    /// previous conditions have been met.
+    pub fn add_trigger_stage(&mut self, events: Vec<(&str, TriggerEvent)>) -> Result<(), SrError> {
+        if self.trigger.is_none() {
+            return Err(SrError::SrErrBug);
+        }
+
+        if events.is_empty() {
+            return Err(SrError::SrErrArg);
+        }
+
+        let mut channel_events: Vec<(&Channel, TriggerEvent)> = Vec::new();
+
+        for (channel_name, trigger_event) in events {
+            let channel = self.device.get_channel(channel_name)?;
+            channel_events.push((channel, trigger_event));
+        }
+
+        self.trigger.as_mut().unwrap().add_match(channel_events)?;
         Ok(())
     }
 
     /// Runs the session for `timeout` time.
-    pub fn run_timeout(&mut self, timeout: Duration) -> Result<Vec<u8>, SrError> {
+    pub fn run(&mut self) -> Result<Vec<u8>, SrError> {
         // Although some devices have the "limit_time" option for ending the
         // data acquisition, this is not available for all devices.
         // Therefore, we will use the "limit_samples" and the "samplerate" as
         // a surefire replacement.
-        let samplerate: u64 = self.device.get_option("samplerate")?.parse().unwrap();
-        let samples = samplerate * (timeout.as_millis() as u64) / 1000;
-        let data = self.run_samples(samples)?;
-        Ok(data)
-    }
-
-    /// Runs the session until a given amount of samples are retrieved.
-    pub fn run_samples(&mut self, samples: u64) -> Result<Vec<u8>, SrError> {
-        self.device
-            .set_option("limit_samples", &samples.to_string())?;
-
-        self.start()?;
+        let samples = self.timeout_to_samples(self.timeout)?;
+        self.start(samples, samples)?;
         self.stop(false)?;
 
         Ok(self.output.lock().unwrap().data.clone())
     }
 
+    /// Runs the session until a given amount of samples are retrieved.
+    ///
+    /// If a trigger condition was set before `timeout`, this function will
+    /// return `samples_after_trigger` samples.
+    ///
+    /// The output file will holds all samples and a marker showing where the
+    /// trigger condition happened.
+    pub fn run_samples(&mut self, samples: u64) -> Result<Vec<u8>, SrError> {
+        let samples_until_timeout = if self.trigger.is_some() {
+            self.timeout_to_samples(self.timeout)?
+        } else {
+            samples
+        };
+
+        self.start(samples, samples_until_timeout)?;
+        self.stop(false)?;
+
+        let data = self.output.lock().unwrap().data.clone();
+
+        // Timeout reached, the trigger was never met
+        if data.len() == 0 && self.trigger.is_some() {
+            return Err(SrError::SrErrTimeout);
+        }
+
+        Ok(data)
+    }
+
+    /// Sets the default
+    pub fn set_timeout(&mut self, timeout: Duration) {
+        self.timeout = timeout;
+    }
+
+    /// Using the device's samplerate, converts a time duration into the
+    /// equivalent number of samples that should be taken to have that time
+    /// pass.
+    pub fn timeout_to_samples(&self, timeout: Duration) -> Result<u64, SrError> {
+        let samplerate: u64 = self.device.get_option("samplerate")?.parse().unwrap();
+        let timeout_samples = samplerate * (timeout.as_millis() as u64) / 1000;
+        Ok(timeout_samples)
+    }
+
     /// Starts the session in a new thread.
-    fn start(&mut self) -> Result<(), SrError> {
+    fn start(&mut self, samples_after_trigger: u64, max_samples: u64) -> Result<(), SrError> {
         *(self.output.lock().unwrap()) = OutputModule::new(
             &self.output_id,
             &self.output_filename,
+            samples_after_trigger,
             self.device.get_pointer(),
             self.p_session,
         )?;
-        self.output.lock().unwrap().data = Vec::new();
+
+        self.device
+            .set_option("limit_samples", &max_samples.to_string())?;
+
+        if self.trigger.is_some() {
+            sr_try!(sr::sr_session_trigger_set(
+                self.p_session,
+                self.trigger.as_ref().unwrap().get_pointer()
+            ));
+            self.output.lock().unwrap().triggered = false;
+        } else {
+            // If there is no trigger, assume that it has already been
+            // triggered, so data acquisition can start
+            self.output.lock().unwrap().triggered = true;
+        }
+
         let p_data: *mut c_void =
             (&mut self.output as *mut Arc<Mutex<OutputModule>>) as *mut c_void;
         sr_try!(sr::sr_session_datafeed_callback_add(
@@ -307,10 +403,20 @@ extern "C" fn datafeed_callback(
         PacketType::Header => {}
         PacketType::End => {}
         PacketType::Meta => {}
-        PacketType::Trigger => {}
+        PacketType::Trigger => {
+            output.triggered = true;
+        }
         PacketType::Logic => {
-            let logic_packet: LogicPacket = LogicPacket::from(packet.payload);
-            output.data.extend(logic_packet.data);
+            if output.triggered && (output.data.len() < (output.max_samples as usize)) {
+                let mut logic_packet: LogicPacket = LogicPacket::from(packet.payload);
+
+                if logic_packet.data.len() + output.data.len() > output.max_samples as usize {
+                    logic_packet
+                        .data
+                        .resize(output.max_samples as usize - output.data.len(), 0);
+                }
+                output.data.extend(logic_packet.data);
+            }
         }
         PacketType::FrameBegin => {}
         PacketType::FrameEnd => {}

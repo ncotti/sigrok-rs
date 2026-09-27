@@ -12,7 +12,7 @@ fn test_scan_output() -> Result<(), SrError> {
         .unwrap();
     assert!(ascii_info.id == "ascii");
 
-    // Output module should implement Display trait and DEbug trait.
+    // Output module should implement Display trait and Debug trait.
     println!("{}", ascii_info);
     dbg!(ascii_info);
     Ok(())

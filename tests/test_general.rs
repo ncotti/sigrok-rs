@@ -41,7 +41,8 @@ fn test_run_timeout() -> Result<(), SrError> {
     let output_file = NamedTempFile::new().unwrap();
 
     session.set_output("ascii", output_file.path())?;
-    session.run_timeout(Duration::from_millis(100))?;
+    session.set_timeout(Duration::from_millis(100));
+    session.run()?;
 
     let file = std::fs::File::open(output_file.path()).unwrap();
     let mut reader = io::BufReader::new(file);
@@ -93,18 +94,17 @@ fn test_run_timeout_measured() -> Result<(), SrError> {
     // 200 kHz, default value
     let samplerate: usize = 200000;
 
-    let timeout: Duration = Duration::from_millis(100);
-    let data = session.run_timeout(timeout)?;
-    dbg!(data.len());
+    // Default timeout should be 1 second
+    let data = session.run()?;
+    assert!(data.len() == samplerate * 1000 / 1000);
+
+    session.set_timeout(Duration::from_millis(100));
+    let data = session.run()?;
     assert!(data.len() == samplerate * 100 / 1000);
 
-    let timeout: Duration = Duration::from_millis(400);
-    let data = session.run_timeout(timeout)?;
+    session.set_timeout(Duration::from_millis(400));
+    let data = session.run()?;
     assert!(data.len() == samplerate * 400 / 1000);
-
-    let timeout: Duration = Duration::from_millis(500);
-    let data = session.run_timeout(timeout)?;
-    assert!(data.len() == samplerate * 500 / 1000);
 
     Ok(())
 }

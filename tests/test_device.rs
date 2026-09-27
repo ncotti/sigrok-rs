@@ -1,9 +1,6 @@
 //! This file changes a device configuration and does several runs.
 
-use std::{
-    io::{self, BufRead},
-    time::Duration,
-};
+use std::io::{self, BufRead};
 
 use sigrok_rs::{Session, SrError};
 use tempfile::NamedTempFile;
@@ -27,7 +24,6 @@ fn test_samplerate() -> Result<(), SrError> {
     line1.clear();
     reader.read_line(&mut line1).unwrap();
 
-    dbg!(&line1);
     assert!(line1 == "Acquisition with 8/13 channels at 100 kHz\n");
 
     session.set_output("bits", file2.path())?;
@@ -42,7 +38,6 @@ fn test_samplerate() -> Result<(), SrError> {
     line1.clear();
     reader.read_line(&mut line1).unwrap();
 
-    dbg!(&line1);
     assert!(line1 == "Acquisition with 8/13 channels at 2 MHz\n");
     Ok(())
 }
@@ -66,7 +61,8 @@ fn test_channel_enablement() -> Result<(), SrError> {
     session.device.enable_channel("6", false)?;
     session.device.enable_channel("7", false)?;
 
-    session.run_samples(4)?;
+    let data = session.run_samples(4)?;
+    assert!(data.len() == 4);
 
     let file = std::fs::File::open(file.path()).unwrap();
     let mut reader = io::BufReader::new(file);
