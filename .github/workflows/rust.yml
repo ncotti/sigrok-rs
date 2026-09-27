@@ -23,6 +23,7 @@ jobs:
       - name: "Install libsigrok"
         shell: bash
         run: |
+          sudo apt update
           sudo apt install libsigrok-dev libsigrokdecode-dev
 
       - name: "Call cargo"
