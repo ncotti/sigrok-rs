@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026  Nicolas Gabriel Cotti
+
 //! This file test the different output modules
 
 use sigrok_rs::{Session, SrError};

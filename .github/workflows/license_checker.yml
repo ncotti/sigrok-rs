@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026  Nicolas Gabriel Cotti
+
+name: "License checker"
+description: <
+  Checks that all relevant files in the repository have a valid
+  SPDX-License-Identifier and a copyright notice.
+on: push
+
+jobs:
+  license_checker:
+    runs-on: ubuntu-latest
+    env:
+      REPO_PATH: .
+      LICENSE: "GPL-3.0-or-later"
+      COPYRIGHT: "Copyright (C) 2026  Nicolas Gabriel Cotti"
+      EXTENSIONS: ".yml .rs"
+    steps:
+      - name: "Checkout project repo"
+        uses: actions/checkout@v5
+        with:
+          path: ${{ env.REPO_PATH }}
+
+      - name: "Call license checker"
+        uses: ncotti/cotti-ci/actions/license_checker@main
+        with:
+          target_dir: "${{ env.REPO_PATH }}"
+          license: "${{ env.LICENSE }}"
+          copyright: "${{ env.COPYRIGHT }}"
+          file_extensions: "${{ env.EXTENSIONS }}"

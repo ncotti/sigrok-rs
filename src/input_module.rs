@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026  Nicolas Gabriel Cotti
+
 //! Input module
 //!
 //! TODO: this module is a work in progress. It has not been tested.
