@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026  Nicolas Gabriel Cotti
+
+name: "Rust compiler, tester and documenter"
+description: <
+  Runs "cargo fmt", "cargo build", "cargo test" and "cargo doc",
+  ensuring that the project compiles, all tests pass and there are no
+  warnings in the generated documentation.
+on: push
+
+jobs:
+  Rust_compiler:
+    runs-on: ubuntu-latest
+    env:
+      # Modify to match your repo requirements
+      REPO_PATH: .
+      RUST_PATH: .
+    steps:
+      - name: "Checkout project repo"
+        uses: actions/checkout@v5
+        with:
+          path: ${{ env.REPO_PATH }}
+
+      - name: "Call cargo"
+        uses: ncotti/cotti-ci/actions/rust@main
+        with:
+          target_dir: ${{ env.RUST_PATH }}

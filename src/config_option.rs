@@ -253,25 +253,25 @@ pub enum GVariantDataType {
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MeasuredQuantity {
-    /// Voltage [V]
+    /// Voltage \[V\]
     Voltage = 10000,
-    /// Current [A]
+    /// Current \[A\]
     Current,
-    /// Resistance [Ohm]
+    /// Resistance \[Ohm\]
     Resistance,
-    /// Capacitance [F]
+    /// Capacitance \[F\]
     Capacitance,
-    /// Temperature [°C]
+    /// Temperature \[°C\]
     Temperature,
-    /// Frequency [Hz]
+    /// Frequency \[Hz\]
     Frequency,
     /// Duty cycle, e.g. on/off ratio.
     DutyCycle,
     /// Continuity test.
     Continuity,
-    /// Pulse width [s]
+    /// Pulse width \[s\]
     PulseWidth,
-    /// Conductance [Siemens]
+    /// Conductance \[Siemens\]
     Conductance,
     /// Electrical power, usually in W, or dBm.
     Power,
