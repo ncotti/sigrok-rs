@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026  Nicolas Gabriel Cotti
+
 //! This file exercises general functionalities of the library, like scanning
 //! for devices and running a basic sessions.
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026  Nicolas Gabriel Cotti
+
 //! This file changes a device configuration and does several runs.
 
 use std::io::{self, BufRead};

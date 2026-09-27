@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026  Nicolas Gabriel Cotti
+
 //! Rust's structs and enums derived from the primitive types of libsigrok.
 
 use thiserror::Error;

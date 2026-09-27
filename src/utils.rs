@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026  Nicolas Gabriel Cotti
+
 //! This module includes utility functions to work with some of glib and
 //! libsigrok data types more easily.
 

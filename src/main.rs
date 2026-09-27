@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026  Nicolas Gabriel Cotti
+
 use sigrok_rs::session::Session;
 use sigrok_rs::types::SrError;
 
