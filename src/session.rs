@@ -90,6 +90,33 @@
 //! session.set_log_level(LogLevel::LogWarn).unwrap();
 //! ```
 //!
+//! ## Using triggers
+//!
+//! Data acquisition can be started after a certain *trigger* is met. Triggers
+//! are specified as a vector of `("channel_id", TriggerEvent)`. All conditions
+//! must be met simultaneously in the same sample for the trigger to be
+//! activated, and the data acquisition includes the sample that caused the
+//! trigger.
+//!
+//! It is also possible to define several *trigger stages*. In this case, data
+//! capture will start after each of the stages' conditions are fulfilled in
+//! the order they were added to the session, in consecutive samples.
+//!
+//! ```rust
+//! use sigrok_rs::{Session, TriggerEvent};
+//!
+//! let mut session = Session::try_from("demo").unwrap();
+//! let events = vec![
+//!     ("D0", TriggerEvent::One),
+//!     ("D1", TriggerEvent::One),
+//! ];
+//! session.set_trigger(events.clone()).unwrap();
+//! session.add_trigger_stage(events.clone()).unwrap();
+//! session.add_trigger_stage(events.clone()).unwrap();
+//!
+//! let data = session.run_samples(10).unwrap();
+//! assert!(data[0] & 0b11 == 0b11);
+//! ```
 
 use std::{
     ffi::c_void,
@@ -309,6 +336,8 @@ impl Session {
     ///
     /// This is a new condition, which must be fulfilled after all other
     /// previous conditions have been met.
+    ///
+    /// Stages must occur in consecutive samples for the trigger to activate.
     pub fn add_trigger_stage(&mut self, events: Vec<(&str, TriggerEvent)>) -> Result<(), SrError> {
         if self.trigger.is_none() {
             return Err(SrError::SrErrBug);

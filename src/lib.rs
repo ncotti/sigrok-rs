@@ -29,6 +29,8 @@
 //! can *scan* for connected devices and print their information:
 //!
 //! ```rust
+//! use sigrok_rs::{Session, Device};
+//!
 //! let mut devices: Vec<Device> = Session::scan().unwrap();
 //! for device in &devices {
 //!     println!("{}", device);
@@ -41,8 +43,13 @@
 //! to a [device]. You may modify the session parameters or the device's
 //! configuration, and then *run* a data capture session.
 //!
+#![doc = mermaid!("../docs/architecture.mmd")]
+//!
+//!
 
 #![warn(missing_docs)]
+
+use simple_mermaid::mermaid;
 
 pub mod device;
 

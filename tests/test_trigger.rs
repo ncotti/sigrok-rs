@@ -130,7 +130,7 @@ fn test_trigger_multiple_stages_second_is_early() -> Result<(), SrError> {
 
     session.set_output("bits", file.path())?;
 
-    // This first condition is met on sample 56
+    // This first condition is met on sample 57.
     let events = vec![
         ("D0", TriggerEvent::Zero),
         ("D1", TriggerEvent::Zero),
@@ -143,8 +143,7 @@ fn test_trigger_multiple_stages_second_is_early() -> Result<(), SrError> {
     ];
     session.set_trigger(events)?;
 
-    // This second condition is met before sample 56, but the first time it
-    // appears after the first trigger is sample 58
+    // This second condition is met on sample 58.
     let events = vec![
         ("D0", TriggerEvent::One),
         ("D1", TriggerEvent::One),
