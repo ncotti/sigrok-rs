@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! Drivers
+//! # Hardware drivers
 //!
 //! Any hardware device has a driver associated,
 //! which is used to interact with it.

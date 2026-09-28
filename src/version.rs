@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! Version module
+//! # Library version
+//!
+//! Provides the version number for the libsigrok library and binary package.
 
 use libsigrok_sys::sigrok as sr;
 use std::fmt;

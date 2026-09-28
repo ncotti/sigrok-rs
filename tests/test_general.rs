@@ -44,7 +44,7 @@ fn test_run_timeout() -> Result<(), SrError> {
     let output_file = NamedTempFile::new().unwrap();
 
     session.set_output("ascii", output_file.path())?;
-    session.set_timeout(Duration::from_millis(100));
+    session.set_timeout(Duration::from_millis(100))?;
     session.run()?;
 
     let file = std::fs::File::open(output_file.path()).unwrap();
@@ -101,11 +101,11 @@ fn test_run_timeout_measured() -> Result<(), SrError> {
     let data = session.run()?;
     assert!(data.len() == samplerate * 1000 / 1000);
 
-    session.set_timeout(Duration::from_millis(100));
+    session.set_timeout(Duration::from_millis(100))?;
     let data = session.run()?;
     assert!(data.len() == samplerate * 100 / 1000);
 
-    session.set_timeout(Duration::from_millis(400));
+    session.set_timeout(Duration::from_millis(400))?;
     let data = session.run()?;
     assert!(data.len() == samplerate * 400 / 1000);
 

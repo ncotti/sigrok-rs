@@ -1,7 +1,96 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! Device representation
+//! # Hardware device
+//!
+//! A device can be thought as any lab instrument capable of
+//! measuring something. E.g.: A logic analyzer, oscilloscope, multimeter,
+//! thermometer, etc.
+//!
+//! A device is composed mainly of three parts:
+//!
+//! * A **driver**, to communicate with it.
+//! * **Channels**, from where data is read.
+//! * **Configuration options**, e.g., the sample rate.
+//!
+//! A device should only be interacted with through a `Session`, not directly.
+//!
+//! ## Device discovery
+//!
+//! A device is a required component for a session and, as such, it must
+//! always be specified. A device can be identified by any of the following
+//! attributes:
+//!
+//! * Vendor.
+//! * Model.
+//! * Serial number.
+//! * Connection ID.
+//! * Driver name.
+//!
+//! To inquiry about the information of all plugged devices to the PC, use the
+//! scan function and print their info. You may also use the whole
+//! Device to start a new session.
+//!
+//! ```rust
+//! use sigrok_rs::{Session, Device};
+//!
+//! let mut devices: Vec<Device> = Session::scan().unwrap();
+//! for device in &devices {
+//!     println!("{}", device);
+//! }
+//! let mut session: Session = Session::try_from(devices.pop().unwrap()).unwrap();
+//! ```
+//!
+//! ## Device configuration
+//!
+//! Configuration is device-dependent, and each configuration requires
+//! different types of parameters. Therefore, all values are handled
+//! as strings. You can see all available options by printing the device.
+//!
+//! ```rust
+//! use sigrok_rs::Session;
+//!
+//! let mut session: Session = Session::try_from("demo").unwrap();
+//! // See all the device's options
+//! println!("{}", session.device);
+//!
+//! session.device.set_option("samplerate", "1000").unwrap();
+//! assert!(session.device.get_option("samplerate").unwrap() == "1000");
+//! ```
+//!
+//! ## Channel management
+//!
+//! A device possesses channels from where data is read; typically
+//! "D0, D1, ..., D7" for the eight channels in a logic analyzer.
+//!
+//! A channel can be referenced by either its number, from "0" to "7", or its
+//! name.
+//!
+//! Channels may be renamed, disabled, enabled or configured. Channel
+//! configurations are not device-wide, and only apply to the channels in the
+//! specified group.
+//!
+//! You can consult the status of the channels by printing the device,
+//! or using the designated functions shown below.
+//!
+//! ```rust
+//! use sigrok_rs::Session;
+//!
+//! let mut session: Session = Session::try_from("demo").unwrap();
+//!
+//! // See channel groups, names, their options and their allowed values.
+//! println!("{}", session.device);
+//!
+//! session.device.channel_set_name("0", "my_channel").unwrap();
+//! session.device.channel_enable("my_channel", true).unwrap();
+//! session.device.channel_enable("1", false).unwrap();
+//! session.device.channel_set_option("Logic", "pattern", "random");
+//!
+//! assert!(session.device.channel_is_enabled("0").unwrap());
+//! assert!(!session.device.channel_is_enabled("D1").unwrap());
+//! assert!(session.device.channel_get_option("Logic", "pattern").unwrap() == "random");
+//! ```
+//!
 
 use libsigrok_sys::sigrok as sr;
 
@@ -18,13 +107,7 @@ use std::ptr::{null, null_mut};
 use crate::sr_try;
 use crate::types::SrError;
 
-/// A device can be thought as any lab instrument capable of
-/// measuring something. E.g.: Logic analyzers, oscilloscopes, multimeters,
-/// thermometers, etc.
-///
-/// A device has a driver to communicate with it, configuration options,
-/// and an arbitrary number of `channel_groups` that hold `channels`
-/// from where data is read.
+/// Hardware device.
 #[derive(Debug)]
 pub struct Device {
     /// Driver used to handle the device.
@@ -82,7 +165,18 @@ impl Display for Device {
         let mut options: String = String::new();
 
         for option in &self.options {
-            options.push_str(format!("    - {}: \"{}\"\n", option.id, option.value).as_str());
+            let mut option_str = format!("    - {}: \"{}\"", option.id, option.value);
+
+            if !option.possible_values.is_empty() {
+                option_str = format!("{} [", option_str);
+                for value in &option.possible_values {
+                    option_str = format!("{}\"{}\",", option_str, value);
+                }
+                option_str.remove(option_str.len() - 1);
+                option_str = format!("{}]", option_str);
+            }
+            option_str = format!("{}\n", option_str);
+            options.push_str(option_str.as_str());
         }
 
         if !options.is_empty() {
@@ -111,7 +205,18 @@ impl Display for Device {
             let mut options: String = String::new();
 
             for option in &channel_group.options {
-                options.push_str(format!("    - {}: \"{}\"\n", option.id, option.value).as_str());
+                let mut option_str = format!("    - {}: \"{}\"", option.id, option.value);
+
+                if !option.possible_values.is_empty() {
+                    option_str = format!("{} [", option_str);
+                    for value in &option.possible_values {
+                        option_str = format!("{}\"{}\",", option_str, value);
+                    }
+                    option_str.remove(option_str.len() - 1);
+                    option_str = format!("{}]", option_str);
+                }
+                option_str = format!("{}\n", option_str);
+                options.push_str(option_str.as_str());
             }
 
             if !options.is_empty() {
@@ -220,7 +325,7 @@ impl Device {
     ///
     /// This functions will not return an error if the device was already
     /// opened.
-    pub fn open(&mut self) -> Result<(), SrError> {
+    fn open(&mut self) -> Result<(), SrError> {
         let status = unsafe { sr::sr_dev_open(self.p_device) };
         let status = SrError::from(status);
         match status {
@@ -311,7 +416,7 @@ impl Device {
     /// receives a string as argument, the value must be parseable to the
     /// option's datatype, or an error `SrError::SrInvalidOptionValue` will be
     /// returned.
-    pub fn set_channel_option(
+    pub fn channel_set_option(
         &mut self,
         channel_group_name: &str,
         id: &str,
@@ -384,7 +489,7 @@ impl Device {
     ///
     /// The returned value will always be a String, and its the user's
     /// responsibility to parse it to the correct data type.
-    pub fn get_channel_option(
+    pub fn channel_get_option(
         &self,
         channel_group_name: &str,
         id: &str,
@@ -441,7 +546,7 @@ impl Device {
     }
 
     /// Enables or disables the given channel.
-    pub fn enable_channel(&mut self, name: &str, enable: bool) -> Result<(), SrError> {
+    pub fn channel_enable(&mut self, name: &str, enable: bool) -> Result<(), SrError> {
         let channel = self.get_channel_mut(name)?;
         sr_try!(sr::sr_dev_channel_enable(
             channel.get_pointer(),
@@ -452,7 +557,7 @@ impl Device {
     }
 
     /// Returns "true" if the channel is enabled.
-    pub fn is_channel_enabled(&self, name: &str) -> Result<bool, SrError> {
+    pub fn channel_is_enabled(&self, name: &str) -> Result<bool, SrError> {
         let channel = self.get_channel(name)?;
         Ok(channel.enabled)
     }
@@ -461,7 +566,7 @@ impl Device {
     ///
     /// * `old_name`: The channel's current name or index number, as a string.
     /// * `new_name`: The channel's new name.
-    pub fn set_channel_name(&mut self, old_name: &str, new_name: &str) -> Result<(), SrError> {
+    pub fn channel_set_name(&mut self, old_name: &str, new_name: &str) -> Result<(), SrError> {
         let channel = self.get_channel_mut(old_name)?;
         let cstring_new_name = std::ffi::CString::new(new_name).map_err(|_| SrError::SrNotFound)?;
         sr_try!(sr::sr_dev_channel_name_set(
@@ -499,11 +604,7 @@ impl TryFrom<(&str, *mut sr_context)> for Device {
     /// vendor, model, serial number or driver name.
     fn try_from(value: (&str, *mut sr_context)) -> Result<Self, Self::Error> {
         let devices = Device::scan(value.1)?;
-        let expected_device = devices.into_iter().find(|dev| {
-            (dev.get_vendor() == value.0)
-                || (dev.get_model() == value.0)
-                || (dev.get_serial_number() == value.0 || (dev.get_driver_name() == value.0))
-        });
+        let expected_device = devices.into_iter().find(|dev| dev == &value.0);
 
         if expected_device.is_none() {
             return Err(SrError::SrDeviceNotFound);
@@ -753,14 +854,14 @@ mod tests {
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
 
-        demo_device.enable_channel("3", true)?;
-        assert!(demo_device.is_channel_enabled("3")?);
-        demo_device.enable_channel("3", false)?;
-        assert!(!demo_device.is_channel_enabled("D3")?);
-        demo_device.enable_channel("D3", true)?;
-        assert!(demo_device.is_channel_enabled("3")?);
+        demo_device.channel_enable("3", true)?;
+        assert!(demo_device.channel_is_enabled("3")?);
+        demo_device.channel_enable("3", false)?;
+        assert!(!demo_device.channel_is_enabled("D3")?);
+        demo_device.channel_enable("D3", true)?;
+        assert!(demo_device.channel_is_enabled("3")?);
 
-        let result = demo_device.is_channel_enabled("abcdef");
+        let result = demo_device.channel_is_enabled("abcdef");
         assert!(result.is_err());
         assert!(result.unwrap_err() == SrError::SrChannelNotFound);
 
@@ -775,12 +876,12 @@ mod tests {
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
 
-        demo_device.set_channel_name("3", "XD")?;
-        demo_device.set_channel_name("D4", "YY")?;
-        assert!(demo_device.is_channel_enabled("XD").is_ok());
-        assert!(demo_device.is_channel_enabled("YY").is_ok());
-        assert!(demo_device.is_channel_enabled("D3").is_err());
-        assert!(demo_device.is_channel_enabled("D4").is_err());
+        demo_device.channel_set_name("3", "XD")?;
+        demo_device.channel_set_name("D4", "YY")?;
+        assert!(demo_device.channel_is_enabled("XD").is_ok());
+        assert!(demo_device.channel_is_enabled("YY").is_ok());
+        assert!(demo_device.channel_is_enabled("D3").is_err());
+        assert!(demo_device.channel_is_enabled("D4").is_err());
 
         sr_try!(sr::sr_exit(context));
         Ok(())
@@ -793,24 +894,24 @@ mod tests {
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
 
-        let result = demo_device.set_channel_option("xdd", "amplitude", "5");
+        let result = demo_device.channel_set_option("xdd", "amplitude", "5");
         assert!(result.is_err());
         assert!(result.unwrap_err() == SrError::SrErrChannelGroup);
 
-        let result = demo_device.get_channel_option("xdd", "amplitude");
+        let result = demo_device.channel_get_option("xdd", "amplitude");
         assert!(result.is_err());
         assert!(result.unwrap_err() == SrError::SrErrChannelGroup);
 
-        demo_device.set_channel_option("A0", "amplitude", "5")?;
-        demo_device.set_channel_option("A0", "offset", "1")?;
-        demo_device.set_channel_option("A0", "pattern", "triangle")?;
+        demo_device.channel_set_option("A0", "amplitude", "5")?;
+        demo_device.channel_set_option("A0", "offset", "1")?;
+        demo_device.channel_set_option("A0", "pattern", "triangle")?;
 
-        assert!(demo_device.get_channel_option("A0", "amplitude")? == "5");
-        assert!(demo_device.get_channel_option("A0", "offset")? == "1");
-        assert!(demo_device.get_channel_option("A0", "pattern")? == "triangle");
+        assert!(demo_device.channel_get_option("A0", "amplitude")? == "5");
+        assert!(demo_device.channel_get_option("A0", "offset")? == "1");
+        assert!(demo_device.channel_get_option("A0", "pattern")? == "triangle");
 
         // "pattern" option has a list of valid values.
-        let result = demo_device.set_channel_option("A0", "pattern", "invalid_pattern");
+        let result = demo_device.channel_set_option("A0", "pattern", "invalid_pattern");
         assert!(result.is_err());
         assert!(result.unwrap_err() == SrError::SrErrArg);
 

@@ -28,20 +28,17 @@ pub struct Trigger {
     p_trigger: *mut sr_trigger,
     /// Raw C-FFI pointer to the trigger stages
     p_stages: Vec<*mut sr_trigger_stage>,
-    /// Trigger's name.
-    pub name: String,
 }
 
 impl Trigger {
     /// Creates a new trigger with a single stage and a single match event.
-    pub fn new(name: String, events: Vec<(&Channel, TriggerEvent)>) -> Result<Self, SrError> {
-        let cstring_name = std::ffi::CString::new(name.clone()).map_err(|_| SrError::SrNull)?;
+    pub fn new(events: Vec<(&Channel, TriggerEvent)>) -> Result<Self, SrError> {
+        let cstring_name = std::ffi::CString::new("trigger").map_err(|_| SrError::SrNull)?;
         let p_trigger: *mut sr_trigger =
             unsafe { sr::sr_trigger_new(cstring_name.as_ptr().cast_mut()) };
 
         let mut trigger = Self {
             p_trigger: p_trigger,
-            name: name,
             p_stages: Vec::new(),
         };
 

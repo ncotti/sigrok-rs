@@ -1,28 +1,69 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! SIGROK-RS
+//! # Sigrok-rs
+//!
+//! Programmatically manage any logic analyzer. Capture samples from your
+//! device to files or Rust variables, and automate measuring and testing
+//! of electrical signals from real hardware.
+//!
+//! Provides a Rust-friendly implementation for [libsigrok](https://sigrok.org/wiki/Libsigrok), using the
+//! C-FFI [libsigrok-sys](https://crates.io/crates/libsigrok-sys).
+//!
+//! ## Example
+//!
+//! The following example connects to the "demo" device, and captures ten
+//! samples; storing them in the file "data_capture.txt" and in a `Vec<u8>`.
+//!
+//! ```rust
+//! use sigrok_rs::Session;
+//!
+//! let mut session: Session = Session::try_from("demo").unwrap();
+//! session.set_output("bits", "data_capture.txt").unwrap();
+//! let capture_data: Vec<u8> = session.run_samples(10).unwrap();
+//!
+//! assert!(capture_data.len() == 10);
+//! ```
+//!
+//! If a new device is plugged to the PC and its information is unknown, you
+//! can *scan* for connected devices and print their information:
+//!
+//! ```rust
+//! let mut devices: Vec<Device> = Session::scan().unwrap();
+//! for device in &devices {
+//!     println!("{}", device);
+//! }
+//! ```
+//!
+//! ## Library architecture
+//!
+//! Any data capture starts by creating a [session], which must always be linked
+//! to a [device]. You may modify the session parameters or the device's
+//! configuration, and then *run* a data capture session.
+//!
 
 #![warn(missing_docs)]
 
-pub mod config_option;
 pub mod device;
-pub mod driver;
-pub mod input_module;
-pub mod output_module;
-pub mod packets;
+
 pub mod session;
-pub mod trigger;
-pub mod types;
 pub mod version;
+
+mod config_option;
+mod driver;
+mod input_module;
+mod output_module;
+mod packets;
+mod trigger;
+mod types;
 
 pub use crate::device::Device;
 pub use crate::session::Session;
+pub use crate::trigger::TriggerEvent;
+pub use crate::types::LogLevel;
 pub use crate::types::SrError;
 
 mod utils;
-
-pub use version::*;
 
 /// This macro will try to execute the sigrok function inside an `unsafe{}`
 /// statement. If it returns anything other than a SrOk status code, it will

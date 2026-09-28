@@ -17,6 +17,7 @@ use crate::output_module::SrOption;
 
 #[derive(Debug, Clone)]
 #[allow(missing_docs)]
+#[allow(unused)]
 pub struct InputModule {
     /// name
     pub name: String,
@@ -30,6 +31,7 @@ pub struct InputModule {
     pub options: Vec<SrOption>,
 }
 
+#[allow(unused)]
 impl InputModule {
     /// Returns a list of all possible output modules there are.
     pub fn scan() -> Vec<InputModule> {

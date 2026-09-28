@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
+//! # Types
+//!
 //! Rust's structs and enums derived from the primitive types of libsigrok.
 
 use thiserror::Error;
@@ -89,9 +91,9 @@ impl From<i32> for SrError {
 }
 
 /// Device type
-/// TODO, currently not used
 #[derive(Debug, Clone, Copy)]
 #[repr(u32)]
+#[allow(unused)]
 pub enum DeviceType {
     /// The device can act as logic analyzer.
     LogicAnalyzer = 10000,
