@@ -304,7 +304,7 @@ impl Device {
         let config_options: Vec<ConfigOption> =
             ConfigOption::scan(driver.get_pointer(), p_device, null())?;
 
-        let mut dev = Device {
+        let dev = Device {
             driver: driver.clone(),
             p_device: p_device,
             vendor: vendor,
@@ -316,7 +316,6 @@ impl Device {
             channel_groups: ChannelGroup::scan(p_device, driver.get_pointer())?,
         };
 
-        dev.open()?;
         Ok(dev)
     }
 
@@ -325,7 +324,7 @@ impl Device {
     ///
     /// This functions will not return an error if the device was already
     /// opened.
-    fn open(&mut self) -> Result<(), SrError> {
+    pub fn open(&mut self) -> Result<(), SrError> {
         let status = unsafe { sr::sr_dev_open(self.p_device) };
         let status = SrError::from(status);
         match status {
@@ -810,6 +809,7 @@ mod tests {
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
         assert!(!demo_device.options.is_empty());
+        demo_device.open()?;
 
         demo_device.set_option("limit_samples", "50")?;
         assert!(demo_device.get_option("limit_samples")? == "50");
@@ -837,6 +837,7 @@ mod tests {
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
         assert!(!demo_device.options.is_empty());
+        demo_device.open()?;
 
         // "continuous" option can't be set
         let result = demo_device.set_option("continuous", "true");
@@ -853,6 +854,7 @@ mod tests {
         sr_try!(sr::sr_init(&mut context));
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
+        demo_device.open()?;
 
         demo_device.channel_enable("3", true)?;
         assert!(demo_device.channel_is_enabled("3")?);
@@ -875,6 +877,7 @@ mod tests {
         sr_try!(sr::sr_init(&mut context));
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
+        demo_device.open()?;
 
         demo_device.channel_set_name("3", "XD")?;
         demo_device.channel_set_name("D4", "YY")?;
@@ -893,6 +896,7 @@ mod tests {
         sr_try!(sr::sr_init(&mut context));
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
+        demo_device.open()?;
 
         let result = demo_device.channel_set_option("xdd", "amplitude", "5");
         assert!(result.is_err());
@@ -926,6 +930,7 @@ mod tests {
 
         let mut demo_device = Device::try_from(("Demo device", context))?;
         assert!(!demo_device.options.is_empty());
+        demo_device.open()?;
 
         // For the demo device, "samplerate" is defined as a list that goes
         // from 1Hz to 1GHz, in jumps of 1Hz.

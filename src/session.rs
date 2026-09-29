@@ -201,6 +201,7 @@ impl TryFrom<&str> for Session {
         }
 
         session.device = device.unwrap();
+        session.device.open()?;
 
         sr_try!(sr::sr_session_dev_add(
             session.p_session,
@@ -231,6 +232,12 @@ impl TryFrom<Device> for Session {
     type Error = SrError;
 
     fn try_from(device: Device) -> Result<Self, SrError> {
+        // Although it could be tempting to use the given Device directly,
+        // the scanned device must come from the Session context, which
+        // is yet to be created.
+        //
+        // The default Device::scan() uses a one-time context that is
+        // then erased. Therefore, the given device is a dangling reference.
         Self::try_from(device.get_driver_name())
     }
 }
@@ -271,6 +278,28 @@ impl Session {
         };
 
         Ok(session)
+    }
+
+    /// Tries to connect to a single device connected to the host PC and
+    /// returns the `Session` object.
+    ///
+    /// This function will fail if no device is connected, or if there are
+    /// more than one hardware device is discovered (not counting the "demo"
+    /// device).
+    pub fn autoconnect() -> Result<Self, SrError> {
+        let devices = Session::scan()?;
+
+        if devices.len() == 1 {
+            Err(SrError::SrDeviceNotFound)
+        } else if devices.len() > 2 {
+            Err(SrError::SrMultipleDevices)
+        } else {
+            let hardware_device = devices
+                .into_iter()
+                .find(|dev| dev.get_driver_name() != "demo")
+                .expect("There is a second device, which is not the demo one");
+            Ok(Session::try_from(hardware_device)?)
+        }
     }
 
     /// Sets the log level for the libsigrok functions.
