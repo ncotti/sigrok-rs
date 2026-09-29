@@ -1,7 +1,122 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! Session
+//! # Data capture session
+//!
+//! A session encompass all the required components for a logic analyzer to do
+//! a data capture, that is:
+//!
+//! 1. Scans for connected devices.
+//! 2. Connects to the plugged **device** using its respective **driver**.
+//! 3. Sets all parameters for the session and for the device. E.g.: sample rate,
+//! how many samples to capture, output format, etc.
+//! 4. Runs the data capture.
+//! 5. Returns the captured samples.
+//!
+//! The normal workflow starts by creating a session attached to a device, and
+//! then running the data capture.
+//!
+//! ```rust
+//! use sigrok_rs::Session;
+//!
+//! let mut session: Session = Session::try_from("demo").unwrap();
+//! session.run().unwrap();
+//! ```
+//! ## Running methods
+//!
+//! There are three ways to perform a data capture:
+//!
+//! 1. Run until a timeout is reached.
+//!
+//! ```rust
+//! use sigrok_rs::Session;
+//! use std::time::Duration;
+//!
+//! let mut session: Session = Session::try_from("demo").unwrap();
+//! session.set_timeout(Duration::from_millis(10)).unwrap();
+//! session.device.set_option("samplerate", "100000").unwrap();
+//! let data: Vec<u8> = session.run().unwrap();
+//!
+//! assert!(data.len() == 100000 * 10 / 1000);
+//! ```
+//!
+//! 2. Run until a certain amount of samples have been captured:
+//!
+//! ```rust
+//! use sigrok_rs::Session;
+//!
+//! let mut session: Session = Session::try_from("demo").unwrap();
+//! let data: Vec<u8> = session.run_samples(8).unwrap();
+//!
+//! assert!(data.len() == 8);
+//! ```
+//!
+//! 3. Run when a trigger condition is met. In this case, the session will
+//! return the number of samples requested after the trigger condition is met,
+//! including the trigger condition itself; or it will fail if the trigger is
+//! not fulfilled before the timeout.
+//!
+//! ```rust
+//! use sigrok_rs::{Session, TriggerEvent};
+//!
+//! let mut session: Session = Session::try_from("demo").unwrap();
+//! let events = vec![("D0", TriggerEvent::Rising)];
+//! session.set_trigger(events).unwrap();
+//! let data: Vec<u8> = session.run_samples(10).unwrap();
+//!
+//! assert!(data.len() == 10);
+//! ```
+//!
+//! ## Session configuration
+//!
+//! The following things can be configured for the session:
+//!
+//! * **Output file format**: Besides returning the data capture as a `Vec<u8>`
+//! vector, the session can be stored in a file.
+//!
+//! * **Timeout**: The session will run for at most the provided *timeout*.
+//!
+//! * **Log level**: Messages printed by the C libsigrok library.
+//!
+//! An example changing all the aforementioned configurations is shown below:
+//!
+//! ```rust
+//! use sigrok_rs::{Session, LogLevel};
+//! use std::time::Duration;
+//!
+//! let mut session: Session = Session::try_from("demo").unwrap();
+//! session.set_output("ascii", "output_file.txt").unwrap();
+//! session.set_timeout(Duration::from_millis(10)).unwrap();
+//! session.set_log_level(LogLevel::LogWarn).unwrap();
+//! ```
+//!
+//! ## Using triggers
+//!
+//! Data acquisition can be started after a certain *trigger* is met. Triggers
+//! are specified as a vector of `("channel_id", TriggerEvent)`. All conditions
+//! must be met simultaneously in the same sample for the trigger to be
+//! activated, and the data acquisition includes the sample that caused the
+//! trigger.
+//!
+//! It is also possible to define several *trigger stages*. In this case, data
+//! capture will start after each of the stages' conditions are fulfilled in
+//! the order they were added to the session, in consecutive samples.
+//!
+//! ```rust
+//! use sigrok_rs::{Session, TriggerEvent};
+//!
+//! let mut session = Session::try_from("demo").unwrap();
+//! let events = vec![
+//!     ("D0", TriggerEvent::One),
+//!     ("D1", TriggerEvent::One),
+//! ];
+//! session.set_trigger(events.clone()).unwrap();
+//! session.add_trigger_stage(events.clone()).unwrap();
+//! session.add_trigger_stage(events.clone()).unwrap();
+//!
+//! let data = session.run_samples(10).unwrap();
+//! assert!(data[0] & 0b11 == 0b11);
+//! ```
 
 use std::{
     ffi::c_void,
@@ -15,11 +130,10 @@ use std::io::Write;
 
 use std::path::Path;
 
-use glib::LogLevel;
-use libsigrok_sys::sigrok::{self as sr, _GString, sr_datafeed_packet, sr_dev_inst};
+use libsigrok_sys::sigrok as sr;
 
 use crate::{
-    Device, SrError,
+    Device, LogLevel, SrError,
     device::Channel,
     output_module::{OutputModule, OutputModuleInfo},
     packets::LogicPacket,
@@ -27,7 +141,7 @@ use crate::{
     trigger::{Trigger, TriggerEvent},
     types::PacketType,
 };
-use sr::{sr_context, sr_session};
+use sr::{_GString, sr_context, sr_datafeed_packet, sr_dev_inst, sr_session};
 
 use std::thread;
 use std::time::Duration;
@@ -113,6 +227,14 @@ impl TryFrom<String> for Session {
     }
 }
 
+impl TryFrom<Device> for Session {
+    type Error = SrError;
+
+    fn try_from(device: Device) -> Result<Self, SrError> {
+        Self::try_from(device.get_driver_name())
+    }
+}
+
 impl Session {
     /// Creates a new "empty" session.
     ///
@@ -134,7 +256,6 @@ impl Session {
             "",
             u64::MAX,
             device.get_pointer(),
-            p_session,
         )?));
 
         let session = Self {
@@ -158,10 +279,7 @@ impl Session {
         Ok(())
     }
 
-    /// Returns a list with the driver names of all discovered devices
-    /// currently plugged to the PC.
-    ///
-    /// The driver name can be used to start a new session.
+    /// Returns a list with all discovered devices currently plugged to the PC.
     ///
     /// The device "demo" is always discovered, so the returned vector will
     /// never be empty.
@@ -196,11 +314,7 @@ impl Session {
     ///
     /// This function will fail if any of the channels' names are incorrect,
     /// or the `events` vector is empty.
-    pub fn set_trigger(
-        &mut self,
-        name: &str,
-        events: Vec<(&str, TriggerEvent)>,
-    ) -> Result<(), SrError> {
+    pub fn set_trigger(&mut self, events: Vec<(&str, TriggerEvent)>) -> Result<(), SrError> {
         if events.is_empty() {
             return Err(SrError::SrErrArg);
         }
@@ -212,7 +326,7 @@ impl Session {
             channel_events.push((channel, trigger_event));
         }
 
-        let trigger: Trigger = Trigger::new(String::from(name), channel_events)?;
+        let trigger: Trigger = Trigger::new(channel_events)?;
 
         self.trigger = Some(trigger);
         Ok(())
@@ -222,6 +336,8 @@ impl Session {
     ///
     /// This is a new condition, which must be fulfilled after all other
     /// previous conditions have been met.
+    ///
+    /// Stages must occur in consecutive samples for the trigger to activate.
     pub fn add_trigger_stage(&mut self, events: Vec<(&str, TriggerEvent)>) -> Result<(), SrError> {
         if self.trigger.is_none() {
             return Err(SrError::SrErrBug);
@@ -283,8 +399,9 @@ impl Session {
     }
 
     /// Sets the default
-    pub fn set_timeout(&mut self, timeout: Duration) {
+    pub fn set_timeout(&mut self, timeout: Duration) -> Result<(), SrError> {
         self.timeout = timeout;
+        Ok(())
     }
 
     /// Using the device's samplerate, converts a time duration into the
@@ -303,7 +420,6 @@ impl Session {
             &self.output_filename,
             samples_after_trigger,
             self.device.get_pointer(),
-            self.p_session,
         )?;
 
         self.device

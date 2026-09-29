@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! Configuration options for devices and channel groups
+//! Configuration options for devices and channel groups.
 
 use std::{
     ffi::{CStr, CString},
@@ -37,6 +37,7 @@ pub struct ConfigOption {
     /// used to reference it.
     pub id: String,
     /// Descriptive name, purely informative.
+    #[allow(unused)]
     pub name: String,
     /// Configuration's current value.
     ///
@@ -132,8 +133,6 @@ impl ConfigOption {
                     std::ptr::addr_of_mut!(gvar).cast(),
                 ));
                 gvariant_to_string(data_type, gvar)?
-            } else if (config_capabilities & sr_configcap_SR_CONF_LIST as i32) != 0 {
-                possible_values.join(" ")
             } else {
                 String::new()
             };

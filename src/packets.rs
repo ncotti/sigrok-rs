@@ -14,6 +14,7 @@ use std::fmt;
 ///
 /// The header is the first packet ever received for a data feed.
 #[derive(Debug, Clone, Copy)]
+#[allow(unused)]
 pub struct HeaderPacket {
     /// Data feed version
     feed_version: u32,
@@ -112,6 +113,7 @@ impl LogicPacket {
     ///
     /// This function will panic!() if the new length is less than the length
     /// the packet already had.
+    #[allow(unused)]
     pub fn resize_payload(payload: *const c_void, new_length: u64) -> sr::sr_datafeed_logic {
         let logic = unsafe { &*(payload as *const sr::sr_datafeed_logic) };
 

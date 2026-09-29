@@ -31,7 +31,7 @@ use std::{
     time::Duration,
 };
 
-use sigrok_rs::{Session, SrError, trigger::TriggerEvent};
+use sigrok_rs::{Session, SrError, TriggerEvent};
 
 use tempfile::NamedTempFile;
 
@@ -53,7 +53,7 @@ fn test_trigger_single_match() -> Result<(), SrError> {
         ("D6", TriggerEvent::One),
         ("D7", TriggerEvent::One),
     ];
-    session.set_trigger("my_trigger", events)?;
+    session.set_trigger(events)?;
     let data = session.run_samples(100)?;
 
     assert!(data.len() == 100);
@@ -97,7 +97,7 @@ fn test_trigger_single_sample() -> Result<(), SrError> {
         ("D6", TriggerEvent::Zero),
         ("D7", TriggerEvent::One),
     ];
-    session.set_trigger("my_trigger", events)?;
+    session.set_trigger(events)?;
     let data = session.run_samples(1)?;
 
     assert!(data.len() == 1);
@@ -130,7 +130,7 @@ fn test_trigger_multiple_stages_second_is_early() -> Result<(), SrError> {
 
     session.set_output("bits", file.path())?;
 
-    // This first condition is met on sample 56
+    // This first condition is met on sample 57.
     let events = vec![
         ("D0", TriggerEvent::Zero),
         ("D1", TriggerEvent::Zero),
@@ -141,10 +141,9 @@ fn test_trigger_multiple_stages_second_is_early() -> Result<(), SrError> {
         ("D6", TriggerEvent::Zero),
         ("D7", TriggerEvent::One),
     ];
-    session.set_trigger("my_trigger", events)?;
+    session.set_trigger(events)?;
 
-    // This second condition is met before sample 56, but the first time it
-    // appears after the first trigger is sample 58
+    // This second condition is met on sample 58.
     let events = vec![
         ("D0", TriggerEvent::One),
         ("D1", TriggerEvent::One),
@@ -198,8 +197,8 @@ fn test_trigger_miss() -> Result<(), SrError> {
         ("D6", TriggerEvent::Zero),
         ("D7", TriggerEvent::Zero),
     ];
-    session.set_trigger("my_trigger", events)?;
-    session.set_timeout(Duration::from_millis(100));
+    session.set_trigger(events)?;
+    session.set_timeout(Duration::from_millis(100))?;
     let data = session.run_samples(10);
     assert!(data.is_err());
     assert!(data.unwrap_err() == SrError::SrErrTimeout);

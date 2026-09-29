@@ -54,15 +54,15 @@ fn test_channel_enablement() -> Result<(), SrError> {
     session.set_output("bits", file.path())?;
 
     // Simulate a SPI connection, with channels being SCLK, MOSI, MISO, CS
-    session.device.set_channel_name("D0", "SCLK")?;
-    session.device.set_channel_name("D1", "MOSI")?;
-    session.device.set_channel_name("D2", "MISO")?;
-    session.device.set_channel_name("D3", "CS")?;
+    session.device.channel_set_name("D0", "SCLK")?;
+    session.device.channel_set_name("D1", "MOSI")?;
+    session.device.channel_set_name("D2", "MISO")?;
+    session.device.channel_set_name("D3", "CS")?;
 
-    session.device.enable_channel("4", false)?;
-    session.device.enable_channel("5", false)?;
-    session.device.enable_channel("6", false)?;
-    session.device.enable_channel("7", false)?;
+    session.device.channel_enable("4", false)?;
+    session.device.channel_enable("5", false)?;
+    session.device.channel_enable("6", false)?;
+    session.device.channel_enable("7", false)?;
 
     let data = session.run_samples(4)?;
     assert!(data.len() == 4);

@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! Output module
+//! # Output module
+//!
+//! The output module is passed to the thread that runs on the background and
+//! constantly receives new samples from the device. It is responsible for
+//! storing the data samples and creating the output files.
 
 use std::ffi::CStr;
 use std::ptr::{null, null_mut};
 
 use glib::ffi::GVariant;
-use libsigrok_sys::sigrok::{
-    self as sr, sr_dev_inst, sr_option, sr_output, sr_output_module, sr_session,
-};
+use libsigrok_sys::sigrok::{self as sr, sr_dev_inst, sr_option, sr_output, sr_output_module};
 
 use crate::types::SrError;
 use crate::utils::gslist_to_vec;
@@ -90,11 +92,6 @@ impl fmt::Display for SrOption {
 pub struct OutputModule {
     /// Pointer to a C-FFI output module.
     p_output: *const sr_output,
-    /// A copy of the C-FFI session pointer.
-    ///
-    /// This pointer is required so that the the callback may stop the session
-    /// on a different thread.
-    pub p_session: *mut sr_session,
     /// All info related to the output module
     info: OutputModuleInfo,
     /// Output will be written to this file
@@ -134,7 +131,6 @@ impl OutputModule {
         filename: impl AsRef<Path>,
         max_samples: u64,
         p_device: *const sr_dev_inst,
-        p_session: *mut sr_session,
     ) -> Result<OutputModule, SrError> {
         // The filename requested by Sigrok's API seems to not be used, so
         // just give it a "mock name" just in case.
@@ -164,7 +160,6 @@ impl OutputModule {
 
         Ok(OutputModule {
             p_output: p_output,
-            p_session: p_session,
             info: info,
             filename: filename,
             data: Vec::new(),

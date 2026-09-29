@@ -1,0 +1,39 @@
+%% Top-level class diagram for the library.
+classDiagram
+    Session --* Device
+    Session --* OutputModule
+    Device --* Driver
+    Device --* Trigger
+
+    class Session{
+        +device
+        ::scan()
+        ::scan_output()
+        +run()
+        +run_samples()
+        +set_trigger()
+        +add_trigger_stage()
+        +set_output()
+        +set_timeout()
+        +set_log_level()
+    }
+
+    class Device{
+        -driver
+        +set_option()
+        +channel_set_option()
+        +channel_enable()
+        +channel_set_name()
+    }
+
+    class Trigger{
+        -Stages
+        -Matches
+    }
+
+    class OutputModule{
+        -Mutex
+        -filename
+        -output_type
+        -output_data
+    }
