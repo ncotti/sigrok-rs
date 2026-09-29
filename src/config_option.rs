@@ -125,14 +125,21 @@ impl ConfigOption {
 
             let value: String = if (config_capabilities & sr_configcap_SR_CONF_GET as i32) != 0 {
                 let mut gvar: *mut GVariant = null_mut();
-                sr_try!(sr::sr_config_get(
-                    p_driver,
-                    p_device,
-                    p_group,
-                    key,
-                    std::ptr::addr_of_mut!(gvar).cast(),
-                ));
-                gvariant_to_string(data_type, gvar)?
+                let result: SrError = unsafe {
+                    sr::sr_config_get(
+                        p_driver,
+                        p_device,
+                        p_group,
+                        key,
+                        std::ptr::addr_of_mut!(gvar).cast(),
+                    )
+                }
+                .into();
+                if result == SrError::SrOk {
+                    gvariant_to_string(data_type, gvar)?
+                } else {
+                    String::new()
+                }
             } else {
                 String::new()
             };
@@ -148,7 +155,6 @@ impl ConfigOption {
 
             options.push(config_option);
         }
-
         Ok(options)
     }
 

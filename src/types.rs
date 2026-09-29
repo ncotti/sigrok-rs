@@ -62,6 +62,8 @@ pub enum SrError {
     SrChannelNotFound = -16,
     #[error("Module not found")]
     SrNotFound = -17,
+    #[error("Multiple devices")]
+    SrMultipleDevices = -18,
 }
 
 impl From<i32> for SrError {
@@ -85,6 +87,7 @@ impl From<i32> for SrError {
             -15 => SrError::SrInvalidOptionValue,
             -16 => SrError::SrChannelNotFound,
             -17 => SrError::SrNotFound,
+            -18 => SrError::SrMultipleDevices,
             _ => SrError::SrErrNA,
         }
     }
