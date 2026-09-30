@@ -54,8 +54,8 @@
 //! // See all the device's options
 //! println!("{}", session.device);
 //!
-//! session.device.set_option("samplerate", "1000").unwrap();
-//! assert!(session.device.get_option("samplerate").unwrap() == "1000");
+//! session.set_samplerate(1000).unwrap();
+//! assert!(session.get_samplerate().unwrap() == 1000);
 //! ```
 //!
 //! ## Channel management

@@ -14,7 +14,7 @@ fn test_background_run() -> Result<(), SrError> {
     let mut session = Session::try_from("demo")?;
 
     session.set_timeout(Duration::from_millis(100))?;
-    session.device.set_option("samplerate", "200000")?;
+    session.set_samplerate(200000)?;
 
     let timer = std::time::Instant::now();
     session.run_daemon()?;
@@ -37,7 +37,7 @@ fn test_run_abort() -> Result<(), SrError> {
     let mut session = Session::try_from("demo")?;
 
     // 10kHz and 10000 samples amount to 1 second
-    session.device.set_option("samplerate", "10000")?;
+    session.set_samplerate(10000)?;
     session.run_samples_daemon(100000)?;
     std::thread::sleep(Duration::from_millis(100));
     let data = session.abort()?;
@@ -83,7 +83,7 @@ fn test_background_and_foreground_at_the_same_time() -> Result<(), SrError> {
     let mut session = Session::try_from("demo")?;
 
     session.set_timeout(Duration::from_millis(100))?;
-    session.device.set_option("samplerate", "50000")?;
+    session.set_samplerate(50000)?;
     session.run_daemon()?;
 
     let result = session.run();
