@@ -64,6 +64,10 @@ pub enum SrError {
     SrNotFound = -17,
     #[error("Multiple devices")]
     SrMultipleDevices = -18,
+    #[error("Session already running")]
+    SrSessionAlreadyRunning = -19,
+    #[error("Attempt to read data, but no session was started")]
+    SrNoData = -20,
 }
 
 impl From<i32> for SrError {
@@ -88,6 +92,8 @@ impl From<i32> for SrError {
             -16 => SrError::SrChannelNotFound,
             -17 => SrError::SrNotFound,
             -18 => SrError::SrMultipleDevices,
+            -19 => SrError::SrSessionAlreadyRunning,
+            -20 => SrError::SrNoData,
             _ => SrError::SrErrNA,
         }
     }

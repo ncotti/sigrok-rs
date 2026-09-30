@@ -387,7 +387,7 @@ impl Session {
         Ok(())
     }
 
-    /// Runs the session for `timeout` time.
+    /// Runs the session for `timeout` time. Blocks the thread execution.
     pub fn run(&mut self) -> Result<Vec<u8>, SrError> {
         // Although some devices have the "limit_time" option for ending the
         // data acquisition, this is not available for all devices.
@@ -395,17 +395,16 @@ impl Session {
         // a surefire replacement.
         let samples = self.timeout_to_samples(self.timeout)?;
         self.start(samples, samples)?;
-        self.stop(false)?;
-
-        Ok(self.output.lock().unwrap().data.clone())
+        self.read()
     }
 
     /// Runs the session until a given amount of samples are retrieved.
+    /// Blocks the thread execution.
     ///
     /// If a trigger condition was set before `timeout`, this function will
     /// return `samples_after_trigger` samples.
     ///
-    /// The output file will holds all samples and a marker showing where the
+    /// The output file will hold all samples and a marker showing where the
     /// trigger condition happened.
     pub fn run_samples(&mut self, samples: u64) -> Result<Vec<u8>, SrError> {
         let samples_until_timeout = if self.trigger.is_some() {
@@ -415,14 +414,59 @@ impl Session {
         };
 
         self.start(samples, samples_until_timeout)?;
+        self.read()
+    }
+
+    /// Runs the session for `timeout` time. Spawns a new thread running in
+    /// the background, so it does not block the calling thread.
+    ///
+    /// Data can be read later by using `self.read()?`.
+    pub fn run_daemon(&mut self) -> Result<(), SrError> {
+        let samples = self.timeout_to_samples(self.timeout)?;
+        self.start(samples, samples)
+    }
+
+    /// Runs the session until a given amount of samples are retrieved. Spawns
+    /// a new thread running in the background, so it does not block the
+    /// calling thread.
+    ///
+    /// If a trigger condition was set before `timeout`, this function will
+    /// return `samples_after_trigger` samples.
+    ///
+    /// The output file will hold all samples and a marker showing where the
+    /// trigger condition happened.
+    pub fn run_samples_daemon(&mut self, samples: u64) -> Result<(), SrError> {
+        let samples_until_timeout = if self.trigger.is_some() {
+            self.timeout_to_samples(self.timeout)?
+        } else {
+            samples
+        };
+
+        self.start(samples, samples_until_timeout)
+    }
+
+    /// Reads output data from a session that has run.
+    ///
+    /// If there is a session running, it will wait until that session ends.
+    ///
+    /// If no session was started, it will fail. If a session ran but couldn't
+    /// fetch any data, usually because a trigger condition was not met, it
+    /// will fail.
+    pub fn read(&mut self) -> Result<Vec<u8>, SrError> {
         self.stop(false)?;
 
-        let data = self.output.lock().unwrap().data.clone();
+        let mut output = self.output.lock().unwrap();
 
-        // Timeout reached, the trigger was never met
-        if data.len() == 0 && self.trigger.is_some() {
-            return Err(SrError::SrErrTimeout);
+        if output.data.len() == 0 {
+            if self.trigger.is_some() {
+                return Err(SrError::SrErrTimeout);
+            } else {
+                return Err(SrError::SrNoData);
+            }
         }
+
+        let data = output.data.clone();
+        output.data.clear();
 
         Ok(data)
     }
@@ -442,8 +486,19 @@ impl Session {
         Ok(timeout_samples)
     }
 
+    /// Forcefully aborts execution for a running session, returning as much
+    /// data as could be retrieved.
+    pub fn abort(&mut self) -> Result<Vec<u8>, SrError> {
+        self.stop(true)?;
+        self.read()
+    }
+
     /// Starts the session in a new thread.
     fn start(&mut self, samples_after_trigger: u64, max_samples: u64) -> Result<(), SrError> {
+        if self.is_running() {
+            return Err(SrError::SrSessionAlreadyRunning);
+        }
+
         *(self.output.lock().unwrap()) = OutputModule::new(
             &self.output_id,
             &self.output_filename,
@@ -492,7 +547,7 @@ impl Session {
     /// Sessions should be started with the `start()` method. This function
     /// will not return an error if the session was not running.
     fn stop(&mut self, force: bool) -> Result<(), SrError> {
-        if unsafe { sr::sr_session_is_running(self.p_session) } == 1 && force {
+        if self.is_running() && force {
             sr_try!(sr::sr_session_stop(self.p_session));
         }
         if self.thread_handle.is_some() {
@@ -515,6 +570,11 @@ impl Session {
         self.output_filename = filename.to_string_lossy().to_string();
         self.output_id = id.to_string();
         Ok(())
+    }
+
+    /// Returns whether there is an active session or not.
+    pub fn is_running(&self) -> bool {
+        (unsafe { sr::sr_session_is_running(self.p_session) } == 1)
     }
 }
 
