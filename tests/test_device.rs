@@ -16,7 +16,7 @@ fn test_samplerate() -> Result<(), SrError> {
     let file2 = NamedTempFile::new().unwrap();
 
     session.set_output("bits", file1.path())?;
-    session.device.set_option("samplerate", "100000")?;
+    session.set_samplerate(100000)?;
     session.run_samples(10)?;
 
     let file = std::fs::File::open(file1.path()).unwrap();
@@ -30,7 +30,7 @@ fn test_samplerate() -> Result<(), SrError> {
     assert!(line1 == "Acquisition with 8/13 channels at 100 kHz\n");
 
     session.set_output("bits", file2.path())?;
-    session.device.set_option("samplerate", "2000000")?;
+    session.set_samplerate(2000000)?;
     session.run_samples(10)?;
 
     let file = std::fs::File::open(file2.path()).unwrap();

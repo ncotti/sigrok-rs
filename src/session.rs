@@ -34,7 +34,7 @@
 //!
 //! let mut session: Session = Session::try_from("demo").unwrap();
 //! session.set_timeout(Duration::from_millis(10)).unwrap();
-//! session.device.set_option("samplerate", "100000").unwrap();
+//! session.set_samplerate(100000).unwrap();
 //! let data: Vec<u8> = session.run().unwrap();
 //!
 //! assert!(data.len() == 100000 * 10 / 1000);
@@ -481,7 +481,7 @@ impl Session {
     /// equivalent number of samples that should be taken to have that time
     /// pass.
     pub fn timeout_to_samples(&self, timeout: Duration) -> Result<u64, SrError> {
-        let samplerate: u64 = self.device.get_option("samplerate")?.parse().unwrap();
+        let samplerate: u64 = self.get_samplerate().unwrap();
         let timeout_samples = samplerate * (timeout.as_millis() as u64) / 1000;
         Ok(timeout_samples)
     }
@@ -570,6 +570,23 @@ impl Session {
         self.output_filename = filename.to_string_lossy().to_string();
         self.output_id = id.to_string();
         Ok(())
+    }
+
+    /// Sets the device's sample rate.
+    pub fn set_samplerate(&mut self, samplerate: u64) -> Result<(), SrError> {
+        self.device
+            .set_option("samplerate", &samplerate.to_string())
+    }
+
+    /// Returns the device's sample rate
+    pub fn get_samplerate(&self) -> Result<u64, SrError> {
+        let result = self.device.get_option("samplerate");
+
+        if result.is_ok() {
+            Ok(result.unwrap().parse().unwrap())
+        } else {
+            Err(result.unwrap_err())
+        }
     }
 
     /// Returns whether there is an active session or not.
