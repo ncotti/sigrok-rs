@@ -52,6 +52,7 @@
 use simple_mermaid::mermaid;
 
 pub mod device;
+pub mod decoder;
 
 pub mod session;
 pub mod version;
@@ -63,6 +64,9 @@ mod output_module;
 mod packets;
 mod trigger;
 mod types;
+
+pub use crate::decoder::Decoder;
+pub use crate::decoder::spi_decoder::{SPIDecoder, SPIOptions, SPIChannels};
 
 pub use crate::device::Device;
 pub use crate::session::Session;
