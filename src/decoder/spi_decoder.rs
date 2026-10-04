@@ -268,7 +268,7 @@ impl SPIDecoder {
     }
 
     /// Writes to the SPI Decoder and returns the decoded output.
-    pub fn write(&mut self, mut data: Vec<u8>) -> Result<&SPIData, SrError> {
+    pub fn write(&mut self, data: Vec<u8>) -> Result<&SPIData, SrError> {
         self.decoder.write(data)?;
         Ok(&self.data)
     }
