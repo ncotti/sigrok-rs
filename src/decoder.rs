@@ -30,7 +30,7 @@ use crate::utils::gslist_to_vec;
 ///
 /// Other specific decoder must implement their own callbacks with:
 ///
-/// ```ignore
+/// ```txt
 /// sr_try!(srd::srd_pd_output_callback_add(
 ///     decoder.p_session,
 ///     srd::srd_output_type_SRD_OUTPUT_PYTHON as i32,
