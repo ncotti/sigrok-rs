@@ -57,12 +57,16 @@ pub mod session;
 pub mod version;
 
 mod config_option;
+mod decoder;
 mod driver;
 mod input_module;
 mod output_module;
 mod packets;
 mod trigger;
 mod types;
+
+pub use crate::decoder::Decoder;
+pub use crate::decoder::spi_decoder::{SPIChannels, SPIDecoder, SPIOptions};
 
 pub use crate::device::Device;
 pub use crate::session::Session;
