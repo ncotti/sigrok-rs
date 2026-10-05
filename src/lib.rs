@@ -66,6 +66,7 @@ mod trigger;
 mod types;
 
 pub use crate::decoder::Decoder;
+pub use crate::decoder::i2c_decoder::{I2CChannels, I2CDecoder, I2COptions};
 pub use crate::decoder::spi_decoder::{SPIChannels, SPIDecoder, SPIOptions};
 
 pub use crate::device::Device;
