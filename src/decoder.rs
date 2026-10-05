@@ -3,6 +3,7 @@
 
 //! Generic protocol decoder
 
+pub mod i2c_decoder;
 pub mod spi_decoder;
 
 use std::ffi::CStr;
