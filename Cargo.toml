@@ -1,7 +1,16 @@
 [package]
 name = "sigrok-rs"
+description = "sigrok Rust wrapper"
+keywords = ["sigrok", "sigrokdecode", "logic-analyzer"]
+
+license = "GPL-3.0-or-later"
+authors = ["Nicolas Gabriel Cotti"]
+
 version = "0.1.0"
 edition = "2024"
+
+readme = "README.md"
+repository = "https://github.com/ncotti/sigrok-rs"
 
 [dependencies]
 glib = "0.22.8"
