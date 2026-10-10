@@ -3,7 +3,8 @@
 
 //! Test SPI decoder.
 
-use sigrok_rs::{SPIChannels, SPIDecoder, SPIOptions, SrError};
+use sigrok_rs::SrError;
+use sigrok_rs::spi::{SPIChannels, SPIDecoder, SPIOptions};
 
 #[test]
 fn test_spi_cs() -> Result<(), SrError> {

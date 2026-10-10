@@ -3,7 +3,8 @@
 
 //! Test JTAG decoder
 
-use sigrok_rs::{DataSample, JTAGDecoder, JTAGState, JTAGTdiTdo, SrError};
+use sigrok_rs::jtag::{JTAGDecoder, JTAGState, JTAGTdiTdo};
+use sigrok_rs::{DataSample, SrError};
 
 #[test]
 fn test_jtag_decoder() -> Result<(), SrError> {

@@ -5,7 +5,7 @@
 
 use std::{ffi::c_void, ptr::null_mut};
 
-use crate::{Decoder, SrError, sr_try};
+use crate::{SrError, sr_try};
 
 use glib::{self};
 use libsigrok_sys::sigrokdecode::{self as srd, srd_proto_data};
@@ -13,7 +13,7 @@ use libsigrok_sys::sigrokdecode::{self as srd, srd_proto_data};
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
-use crate::decoder::DataSample;
+use crate::decoder::{DataSample, Decoder};
 
 /// Configuration options for I2C decoder.
 pub enum I2COptions {

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! SPI decoder
+//! # SPI decoder
+//!
+//! The SPI (Serial Peripheral Interface) protocol decoder
 
 use std::{ffi::c_void, ptr::null_mut};
 
-use crate::{Decoder, SrError, sr_try};
+use crate::{SrError, sr_try};
 
 use glib::{self, ffi::GHashTable};
 use libsigrok_sys::sigrokdecode::{self as srd, srd_proto_data};
@@ -13,7 +15,7 @@ use libsigrok_sys::sigrokdecode::{self as srd, srd_proto_data};
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
-use crate::decoder::DataSample;
+use crate::decoder::{DataSample, Decoder};
 
 /// Configuration options for SPI decoder.
 pub enum SPIOptions {

@@ -4,13 +4,14 @@
 //! # Sigrok-rs
 //!
 //! Programmatically manage any logic analyzer. Capture samples from your
-//! device to files or Rust variables, and automate measuring and testing
-//! of electrical signals from real hardware.
+//! device to files or Rust variables, automate measuring and testing
+//! of electrical signals from real hardware and decode bus protocols like
+//! SPI, I2C and JTAG.
 //!
 //! Provides a Rust-friendly implementation for [libsigrok](https://sigrok.org/wiki/Libsigrok), using the
 //! C-FFI [libsigrok-sys](https://crates.io/crates/libsigrok-sys).
 //!
-//! ## Example
+//! ## Example data acquisition
 //!
 //! The following example connects to the "demo" device, and captures ten
 //! samples; storing them in the file "data_capture.txt" and in a `Vec<u8>`.
@@ -65,12 +66,11 @@ mod packets;
 mod trigger;
 mod types;
 
-pub use crate::decoder::i2c_decoder::{I2CChannels, I2CDecoder, I2COptions};
-pub use crate::decoder::jtag_decoder::{
-    JTAGChannels, JTAGDecoder, JTAGOptions, JTAGState, JTAGTdiTdo,
-};
-pub use crate::decoder::spi_decoder::{SPIChannels, SPIDecoder, SPIOptions};
-pub use crate::decoder::{DataSample, Decoder};
+pub use crate::decoder::i2c;
+pub use crate::decoder::jtag;
+pub use crate::decoder::spi;
+
+pub use crate::decoder::DataSample;
 
 pub use crate::device::Device;
 pub use crate::session::Session;

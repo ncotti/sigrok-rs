@@ -3,7 +3,8 @@
 
 //! Test SPI decoder.
 
-use sigrok_rs::{I2CDecoder, SrError};
+use sigrok_rs::SrError;
+use sigrok_rs::i2c::I2CDecoder;
 
 #[test]
 fn test_i2c_basic_transaction() -> Result<(), SrError> {
