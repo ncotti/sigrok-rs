@@ -3,11 +3,12 @@
 
 //! Test JTAG decoder
 
-use sigrok_rs::{DataSample, JTAGDecoder, JTAGState, JTAGTdiTdo, SrError};
+use sigrok_rs::jtag::{JTAGDecoder, JTAGState, JTAGTdiTdo};
+use sigrok_rs::{DataSample, SrError};
 
 #[test]
 fn test_jtag_decoder() -> Result<(), SrError> {
-    let mut decoder = JTAGDecoder::new(None, None)?;
+    let mut decoder = JTAGDecoder::new(None)?;
 
     // TMS TCK TDO TDI
     // Example from https://vlsitutorials.com/example-showing-jtag-operation/

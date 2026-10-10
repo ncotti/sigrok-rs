@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! SPI decoder
+//! # I2C decoder
 
 use std::{ffi::c_void, ptr::null_mut};
 
-use crate::{Decoder, SrError, sr_try};
+use crate::{SrError, sr_try};
 
 use glib::{self};
 use libsigrok_sys::sigrokdecode::{self as srd, srd_proto_data};
@@ -13,13 +13,10 @@ use libsigrok_sys::sigrokdecode::{self as srd, srd_proto_data};
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
-use crate::decoder::DataSample;
+use crate::decoder::{DataSample, Decoder};
 
 /// Configuration options for I2C decoder.
 pub enum I2COptions {
-    /// Sample rate.
-    Samplerate(u64),
-
     /// Todo check.
     AddressShifted(u8),
 }
@@ -58,13 +55,21 @@ impl I2CChannels {
 /// 6. Single stop condition.
 #[derive(Debug, Default)]
 pub struct I2CData {
+    /// Start
     pub start: Vec<DataSample>,
+    /// Address
     pub address: Vec<DataSample>,
+    /// RW address
     pub rw_address: Vec<bool>,
+    /// Address ACK
     pub address_ack: Vec<DataSample>,
+    /// Data
     pub data: Vec<DataSample>,
+    /// Data ACK
     pub data_ack: Vec<DataSample>,
+    /// RW data
     pub rw_data: Vec<bool>,
+    /// Stop
     pub stop: Option<DataSample>,
 }
 
@@ -93,14 +98,6 @@ impl I2CDecoder {
 
         for option in options {
             match option {
-                I2COptions::Samplerate(samplerate) => {
-                    sr_try!(srd::srd_session_metadata_set(
-                        decoder.p_session,
-                        srd::srd_configkey_SRD_CONF_SAMPLERATE as i32,
-                        glib::ffi::g_variant_new_uint64(samplerate).cast()
-                    ));
-                }
-
                 I2COptions::AddressShifted(shifted) => {
                     let table: *mut glib::ffi::GHashTable = unsafe {
                         glib::ffi::g_hash_table_new(

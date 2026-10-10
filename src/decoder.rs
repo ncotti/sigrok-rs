@@ -3,9 +3,9 @@
 
 //! Generic protocol decoder
 
-pub mod i2c_decoder;
-pub mod jtag_decoder;
-pub mod spi_decoder;
+pub mod i2c;
+pub mod jtag;
+pub mod spi;
 
 use std::ffi::CStr;
 use std::ptr::addr_of_mut;
@@ -71,6 +71,7 @@ impl Decoder {
     }
 
     /// Returns a list with the ids of all available decoders.
+    #[allow(unused)]
     pub fn scan() -> Result<Vec<String>, SrError> {
         sr_try!(srd::srd_init(null()));
         sr_try!(srd::srd_decoder_load_all());
@@ -178,5 +179,18 @@ impl DataSample {
 impl PartialEq<u8> for DataSample {
     fn eq(&self, other: &u8) -> bool {
         self.value == *other
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decoder_scan() {
+        let decoder_ids = Decoder::scan().unwrap();
+        assert!(decoder_ids.iter().find(|id| *id == "jtag").is_some());
+        assert!(decoder_ids.iter().find(|id| *id == "spi").is_some());
+        assert!(decoder_ids.iter().find(|id| *id == "i2c").is_some());
     }
 }
