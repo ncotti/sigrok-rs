@@ -154,9 +154,7 @@ impl JTAGDecoder {
     /// * `channels`: Which channels are read, and in which position. The
     /// order in which the channels are defined in here determine the channel
     /// number for that signal, starting from zero.
-    pub fn new(
-        channels: Option<Vec<JTAGChannels>>,
-    ) -> Result<Self, SrError> {
+    pub fn new(channels: Option<Vec<JTAGChannels>>) -> Result<Self, SrError> {
         let decoder = Decoder::new("jtag")?;
 
         let channels = channels.unwrap_or_default();
