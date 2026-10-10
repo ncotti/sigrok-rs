@@ -3,7 +3,8 @@
 
 //! # SPI decoder
 //!
-//! The SPI (Serial Peripheral Interface) protocol decoder
+//! The SPI (Serial Peripheral Interface) uses up-to four channels:
+//! `CLK`, `MISO`, `MOSI` and `CS`.
 
 use std::{ffi::c_void, ptr::null_mut};
 
@@ -19,9 +20,6 @@ use crate::decoder::{DataSample, Decoder};
 
 /// Configuration options for SPI decoder.
 pub enum SPIOptions {
-    /// Sample rate.
-    Samplerate(u64),
-
     /// Chip select polarity. Default is `0`.
     ///
     /// * `0`: Chip is selected when the signal is electrical low.
@@ -99,14 +97,6 @@ impl SPIDecoder {
 
         for option in options {
             match option {
-                SPIOptions::Samplerate(samplerate) => {
-                    sr_try!(srd::srd_session_metadata_set(
-                        decoder.p_session,
-                        srd::srd_configkey_SRD_CONF_SAMPLERATE as i32,
-                        glib::ffi::g_variant_new_uint64(samplerate).cast()
-                    ));
-                }
-
                 SPIOptions::CSPolarity(pol) => {
                     let table: *mut glib::ffi::GHashTable = unsafe {
                         glib::ffi::g_hash_table_new(

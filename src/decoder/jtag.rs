@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Nicolas Gabriel Cotti
 
-//! JTAG decoder
+//! # JTAG decoder
 
 use std::{ffi::c_void, ptr::null_mut};
 
@@ -14,12 +14,6 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 
 use crate::decoder::{DataSample, Decoder};
-
-/// Configuration options for JTAG decoder.
-pub enum JTAGOptions {
-    /// Sample rate.
-    Samplerate(u64),
-}
 
 /// JTAG Channels.
 pub enum JTAGChannels {
@@ -137,24 +131,12 @@ impl From<&str> for JTAGState {
     }
 }
 
-/// All elements in an I2C communication frame:
-///
-/// A frame is composed by the following elements:
-///
-/// 1. A start condition.
-/// 2. 7 address bits + rw bit.
-/// 3. ACK (1) / NACK (0) bit.
-/// 4. 8 data bits.
-/// 5. ACK (1) / NACK (0) bit.
-///
-/// At this point, any number of data + ACK bits can be sent. Also, a new
-/// repeated start condition can be received. That's why all values are
-/// vectors.
-///
-/// 6. Single stop condition.
+/// A JTAG State machine transition.
 #[derive(Debug)]
 pub struct JTAGData {
+    /// Current JTAG state.
     pub state: JTAGState,
+    /// TMS pin status.
     pub tms: DataSample,
 }
 
@@ -169,29 +151,13 @@ pub struct JTAGDecoder {
 impl JTAGDecoder {
     /// Creates a new SPIDecoder.
     ///
-    /// * `options`: Configuration options for the SPI decoder.
     /// * `channels`: Which channels are read, and in which position. The
     /// order in which the channels are defined in here determine the channel
     /// number for that signal, starting from zero.
     pub fn new(
-        options: Option<Vec<JTAGOptions>>,
         channels: Option<Vec<JTAGChannels>>,
     ) -> Result<Self, SrError> {
         let decoder = Decoder::new("jtag")?;
-
-        let options = options.unwrap_or_default();
-
-        for option in options {
-            match option {
-                JTAGOptions::Samplerate(samplerate) => {
-                    sr_try!(srd::srd_session_metadata_set(
-                        decoder.p_session,
-                        srd::srd_configkey_SRD_CONF_SAMPLERATE as i32,
-                        glib::ffi::g_variant_new_uint64(samplerate).cast()
-                    ));
-                }
-            }
-        }
 
         let channels = channels.unwrap_or_default();
 

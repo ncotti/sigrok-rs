@@ -9,7 +9,6 @@ use sigrok_rs::spi::{SPIChannels, SPIDecoder, SPIOptions};
 #[test]
 fn test_spi_cs() -> Result<(), SrError> {
     let options: Vec<SPIOptions> = vec![
-        SPIOptions::Samplerate(100000),
         SPIOptions::ClockPolarity(0),
         SPIOptions::BitOrder(0),
         SPIOptions::CSPolarity(0),
@@ -57,7 +56,6 @@ fn test_spi_cs() -> Result<(), SrError> {
 #[test]
 fn test_miso_mosi_data() -> Result<(), SrError> {
     let options: Vec<SPIOptions> = vec![
-        SPIOptions::Samplerate(100000),
         SPIOptions::ClockPolarity(0),
         SPIOptions::BitOrder(0),
         SPIOptions::CSPolarity(0),
