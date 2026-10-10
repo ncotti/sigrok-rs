@@ -4,6 +4,7 @@
 //! Generic protocol decoder
 
 pub mod i2c_decoder;
+pub mod jtag_decoder;
 pub mod spi_decoder;
 
 use std::ffi::CStr;
@@ -152,7 +153,7 @@ impl Drop for Decoder {
 
 /// Represents a captured sample from a Logic Analyzer, including the sample
 /// number and time when the data was taken.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DataSample {
     /// Electrical value read by the device.
     pub value: u8,

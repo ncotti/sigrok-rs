@@ -65,9 +65,12 @@ mod packets;
 mod trigger;
 mod types;
 
-pub use crate::decoder::Decoder;
 pub use crate::decoder::i2c_decoder::{I2CChannels, I2CDecoder, I2COptions};
+pub use crate::decoder::jtag_decoder::{
+    JTAGChannels, JTAGDecoder, JTAGOptions, JTAGState, JTAGTdiTdo,
+};
 pub use crate::decoder::spi_decoder::{SPIChannels, SPIDecoder, SPIOptions};
+pub use crate::decoder::{DataSample, Decoder};
 
 pub use crate::device::Device;
 pub use crate::session::Session;
